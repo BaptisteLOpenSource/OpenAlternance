@@ -305,3 +305,6 @@ export function contactWrite(edit: {
 // Excel paste: quoted cell may hold tabs, newlines and "" escaped quotes.
 const tsvCell = (value: string) => (/[\t\n\r"]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value);
 export const toTsv = (rows: readonly (readonly string[])[]) => rows.map((row) => row.map(tsvCell).join("\t")).join("\n");
+
+const ENTITY: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+export const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (c) => ENTITY[c]);

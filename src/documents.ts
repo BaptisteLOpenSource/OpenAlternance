@@ -1,8 +1,6 @@
 import { extractText, getDocumentProxy } from "unpdf";
-import type { DocFormat } from "./logic";
+import { escapeHtml, type DocFormat } from "./logic";
 
-const ENTITY: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
-export const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (c) => ENTITY[c]);
 
 // Stored fragment: every character escaped, so no tag or script from the source file survives.
 export function textToHtml(pages: string[]): string {

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OpenAlternance</title>
+    <meta name="description" content="Suivi des démarches d'alternance" />
+    <meta name="theme-color" content="#171717" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Alternance" />
+    <link rel="icon" href="./public/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./public/apple-touch-icon.png" />
+    <link rel="manifest" href="./public/manifest.webmanifest" />
+    <link rel="stylesheet" href="./styles.css" />
+    <script>
+      let theme = null;
+      try { theme = localStorage.getItem("theme"); } catch {}
+      if (theme === "dark" || (!theme && matchMedia("(prefers-color-scheme: dark)").matches))
+        document.documentElement.classList.add("dark");
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="./app.tsx"></script>
+  </body>
+</html>

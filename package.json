@@ -1,0 +1,31 @@
+{
+  "name": "openalternance",
+  "version": "0.1.0",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "cli": "bun src/cli.ts",
+    "serve": "bun src/server.ts",
+    "build": "bun scripts/build.ts",
+    "migrate": "bun src/cli.ts migrate",
+    "test": "bun test src",
+    "typecheck": "tsc --noEmit",
+    "test:e2e": "playwright test",
+    "test:db": "TEST_DATABASE_URL=${TEST_DATABASE_URL} bun test src"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.0",
+    "@types/bun": "latest",
+    "bun-plugin-tailwind": "^0.1.2",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-preact": "^1.56.0",
+    "preact": "^11.0.1",
+    "tailwind-merge": "^3.7.0",
+    "unpdf": "^1.8.1"
+  }
+}

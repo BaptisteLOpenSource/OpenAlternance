@@ -1,0 +1,39 @@
+[
+  {
+    "nom": "Acme SARL",
+    "ville": "Paris",
+    "site": "https://example.com",
+    "notes": "Exemple fictif.",
+    "contacts": [
+      { "nom": "Alice Dupont", "role": "Responsable RH", "email": "alice.dupont@example.com", "tel": "+33 1 00 00 00 00", "linkedin": "https://example.com/in/alice-dupont" }
+    ],
+    "interactions": [
+      { "type": "candidature", "date": "2026-09-01", "note": "Candidature spontanée envoyée.", "delai": "7" }
+    ]
+  },
+  {
+    "nom": "Globex SAS",
+    "ville": "Lyon",
+    "site": "https://example.com",
+    "notes": "Exemple fictif.",
+    "contacts": [
+      { "nom": "Bob Durand", "role": "Directeur technique", "email": "bob.durand@example.com", "tel": "+33 4 00 00 00 00" }
+    ],
+    "interactions": [
+      { "type": "mail", "date": "2026-09-02", "note": "Premier contact par mail.", "delai": "7" },
+      { "type": "relance", "date": "2026-09-10", "note": "Relance sans réponse." }
+    ]
+  },
+  {
+    "nom": "Initech",
+    "ville": "Nantes",
+    "site": "https://example.com",
+    "notes": "Exemple fictif.",
+    "contacts": [
+      { "nom": "Chloé Bernard", "role": "Cheffe de projet", "email": "chloe.bernard@example.com" }
+    ],
+    "interactions": [
+      { "type": "appel", "date": "2026-09-03", "note": "Échange téléphonique, à rappeler." }
+    ]
+  }
+]

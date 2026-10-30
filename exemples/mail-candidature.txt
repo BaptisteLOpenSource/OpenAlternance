@@ -1,0 +1,10 @@
+Objet : Candidature alternance - {{poste}} - {{nom}}
+
+Bonjour,
+
+Je me permets de vous contacter pour vous proposer ma candidature à une alternance en {{poste}} au sein de {{entreprise}}.
+
+Vous trouverez ci-joint mon CV et ma lettre de motivation. Je serais ravi d'échanger avec vous lors d'un entretien.
+
+Cordialement,
+{{nom}}

@@ -1,0 +1,14 @@
+node_modules/
+.obsidian/
+.superpowers/
+data/
+
+.env
+dist/
+.vercel/
+private/
+
+.vercel
+test-results/
+playwright-report/
+lettres/*.pdf

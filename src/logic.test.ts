@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { daysBetween, isoAgo } from "./logic";
 import { TABLEUR_COLUMNS, missingFields, tableurRow, toTsv, type TableurCompany, addDays, delaiDays, documentFile, isoDate, isWebUrl, parseFrontmatter, relanceForStatut, replayEchanges, setFrontmatter, slug, stripFrontmatter, relanceAfter, statutAfter, weeklyCounts } from "./logic";
 import { NOM_FICHIER_DEFAUT, PROFIL_VIDE, contactWrite, fileName, fillProfil } from "./logic";
 
@@ -245,4 +246,11 @@ test("contact: modify keeps other fields, empty names fall back to current nom",
 
 test("contact: modify nom recombines with current prénom", () => {
   expect(contactWrite({ company: "Acme", rh: true, field: "nom", value: "Smith", nom: "Doe", prenom: "Jane", target: jane }).fields.nom).toBe("Jane Smith");
+});
+
+test("isoAgo", () => expect(isoAgo(new Date("2026-10-30T12:00:00Z"), 15 * 60_000)).toBe("2026-10-30T11:45:00.000Z"));
+test("daysBetween", () => {
+  expect(daysBetween("2026-10-25", "2026-10-30")).toBe(5);
+  expect(daysBetween("2026-10-30", "2026-10-30")).toBe(0);
+  expect(daysBetween("2026-03-28", "2026-03-30")).toBe(2);
 });

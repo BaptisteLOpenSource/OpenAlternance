@@ -20,6 +20,7 @@ import {
   slug,
   statutAfter,
   today,
+  daysBetween,
 } from "./logic";
 
 const SAFE_NAME = /^[\w.-]+\.md$/;
@@ -192,9 +193,14 @@ export async function setRelance(companyNom: string, date: string): Promise<void
 // Idempotent: once moved, prochaine_relance = today and the WHERE no longer matches.
 export async function reporterRelances(): Promise<void> {
   const now = today();
-  await sql`UPDATE companies
-    SET retard = retard + (${now}::date - prochaine_relance::date), prochaine_relance = ${now}
-    WHERE prochaine_relance < ${now} AND NOT (statut = ANY(string_to_array(${[...CLOSING_STATUTS].join(",")}, ',')))`;
+  await sql.begin(async (tx) => {
+    const due = await tx<{ id: number; prochaine_relance: string; statut: string }[]>`
+      SELECT id, prochaine_relance, statut FROM companies WHERE prochaine_relance < ${now}`;
+    for (const r of due) {
+      if ((CLOSING_STATUTS as ReadonlySet<string>).has(r.statut)) continue;
+      await tx`UPDATE companies SET retard = retard + ${daysBetween(r.prochaine_relance, now)}, prochaine_relance = ${now} WHERE id = ${r.id}`;
+    }
+  });
 }
 
 export type Fiche = {

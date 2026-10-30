@@ -1,6 +1,6 @@
 import { SESSION_DAYS, clearSessionCookie, newSessionToken, passwordMatches, sessionCookie, sessionTokenFrom } from "./auth";
 import { sql } from "./db";
-import { FICHE_TEXTES, LETTRE_STATUTS, MAIL_CANAUX, NOM_FICHIER_DEFAUT, STATUTS, SUIVIS, TYPES, delaiDays, documentFile, isoDate, oneOf, stripFrontmatter, today } from "./logic";
+import { FICHE_TEXTES, LETTRE_STATUTS, MAIL_CANAUX, NOM_FICHIER_DEFAUT, STATUTS, SUIVIS, TYPES, delaiDays, documentFile, isoAgo, isoDate, oneOf, stripFrontmatter, today } from "./logic";
 import { MAX_PDF_BASE64, pdfToHtml, renderDocument } from "./documents";
 import * as repo from "./repo";
 
@@ -22,7 +22,7 @@ const clientIp = (req: Request): string => req.headers.get("x-forwarded-for")?.s
 async function isAuthenticated(req: Request): Promise<boolean> {
   const token = sessionTokenFrom(req);
   if (!token) return false;
-  const [session] = await sql`SELECT 1 AS ok FROM sessions WHERE token = ${token} AND created_at > now() - make_interval(days => ${SESSION_DAYS})`;
+  const [session] = await sql`SELECT 1 AS ok FROM sessions WHERE token = ${token} AND created_at > ${isoAgo(new Date(), SESSION_DAYS * 86_400_000)}`;
   return session !== undefined;
 }
 
@@ -133,18 +133,18 @@ const ACTIONS: Record<string, (required: Field, optional: (name: string) => stri
 
 async function login(req: Request): Promise<Response> {
   const ip = clientIp(req);
-  const [{ attempts }] = await sql<{ attempts: number }[]>`
-    SELECT count(*)::int AS attempts FROM login_attempts WHERE ip = ${ip} AND at > now() - interval '15 minutes'`;
-  if (attempts >= MAX_ATTEMPTS) return json({ error: "Trop de tentatives, réessayez dans 15 minutes" }, 429);
+  const [{ attempts }] = await sql<{ attempts: number | string }[]>`
+    SELECT count(*) AS attempts FROM login_attempts WHERE ip = ${ip} AND at > ${isoAgo(new Date(), 15 * 60_000)}`;
+  if (Number(attempts) >= MAX_ATTEMPTS) return json({ error: "Trop de tentatives, réessayez dans 15 minutes" }, 429);
   const body = (await req.json().catch(() => null)) as { password?: unknown } | null;
   const password = typeof body?.password === "string" ? body.password : "";
   if (!PASSWORD || !passwordMatches(password, PASSWORD)) {
-    await sql`INSERT INTO login_attempts (ip) VALUES (${ip})`;
+    await sql`INSERT INTO login_attempts (ip, at) VALUES (${ip}, ${new Date().toISOString()})`;
     return json({ error: "Mot de passe incorrect" }, 401);
   }
   const token = newSessionToken();
-  await sql`DELETE FROM sessions WHERE created_at < now() - make_interval(days => ${SESSION_DAYS})`;
-  await sql`INSERT INTO sessions (token) VALUES (${token})`;
+  await sql`DELETE FROM sessions WHERE created_at < ${isoAgo(new Date(), SESSION_DAYS * 86_400_000)}`;
+  await sql`INSERT INTO sessions (token, created_at) VALUES (${token}, ${new Date().toISOString()})`;
   const secure = new URL(req.url).protocol === "https:";
   return json({ ok: true }, 200, { "set-cookie": sessionCookie(token, secure) });
 }

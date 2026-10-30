@@ -1,6 +1,6 @@
 import { ChevronLeft, ChevronRight, Download } from "lucide-preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
-import { CLOSING_STATUTS, LETTRE_STATUTS, type Profil, MOIS_MIN, fileName, toIso } from "../logic";
+import { CLOSING_STATUTS, LETTRE_STATUTS, type Profil, MOIS_MIN, escapeHtml, fileName, toIso } from "../logic";
 import type { Lettre } from "../repo";
 import { createLettre, lettreOf } from "./commands";
 import { Select } from "./menus";
@@ -138,7 +138,7 @@ export function CalendarPage({ state, openCompany }: { state: AppState; openComp
 }
 
 // A4 sheet in its own document: same markup for the preview and the PDF print.
-const letterDoc = (title: string, body: string, logo: string) => `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>${title}</title>
+const letterDoc = (title: string, body: string, logo: string) => `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;700;800&display=swap">
 <style>
 @page { size: A4; margin: 0 }

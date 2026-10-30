@@ -60,6 +60,13 @@ export function addDays(iso: string, days: number): string {
   return toIso(new Date(year, month - 1, day + days));
 }
 
+export const isoAgo = (now: Date, ms: number): string => new Date(now.getTime() - ms).toISOString();
+
+export function daysBetween(from: string, to: string): number {
+  const utc = (iso: string) => Date.parse(`${iso}T00:00:00Z`);
+  return Math.round((utc(to) - utc(from)) / 86_400_000);
+}
+
 export function isoDate(value: string): string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || addDays(value, 0) !== value) {
     throw new Error(`date invalide (YYYY-MM-DD attendu): ${value}`);
@@ -298,3 +305,6 @@ export function contactWrite(edit: {
 // Excel paste: quoted cell may hold tabs, newlines and "" escaped quotes.
 const tsvCell = (value: string) => (/[\t\n\r"]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value);
 export const toTsv = (rows: readonly (readonly string[])[]) => rows.map((row) => row.map(tsvCell).join("\t")).join("\n");
+
+const ENTITY: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+export const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (c) => ENTITY[c]);

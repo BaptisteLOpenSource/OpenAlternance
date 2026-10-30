@@ -4,12 +4,10 @@ import { join } from "node:path";
 
 // db.ts and api.ts read env at import, before beforeAll: point them at the
 // test DB here, or Bun's .env sends DB tests to production.
-const DB = process.env.TEST_DATABASE_URL;
-if (DB) {
-  if (DB === process.env.DATABASE_URL) throw new Error("TEST_DATABASE_URL = DATABASE_URL: refuse de tester sur la prod");
-  process.env.DATABASE_URL = DB;
-  process.env.OPENALTERNANCE_PASSWORD = "pw-de-test";
-}
+const DB = process.env.TEST_DATABASE_URL ?? "sqlite://:memory:";
+if (DB === process.env.DATABASE_URL) throw new Error("TEST_DATABASE_URL = DATABASE_URL: refuse de tester sur la prod");
+process.env.DATABASE_URL = DB;
+process.env.OPENALTERNANCE_PASSWORD = "pw-de-test";
 process.env.OPENALTERNANCE_PASSWORD ??= "pw-de-test";
 const { handle } = await import("./api");
 const ORIGIN = "http://127.0.0.1:3000";
@@ -88,7 +86,7 @@ test("hashes CSP = scripts inline du build (si dist existe)", () => {
   }
 });
 
-describe.skipIf(!DB)("base de test (TEST_DATABASE_URL)", () => {
+describe("base de test (TEST_DATABASE_URL)", () => {
   let api: typeof import("./api");
   let sql: typeof import("./db").sql;
   let cookie = "";

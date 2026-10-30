@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { chmodSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
 export type Dialect = "postgres" | "sqlite";
@@ -6,6 +6,10 @@ export type Dialect = "postgres" | "sqlite";
 export function resolveDb(url: string | undefined): { dialect: Dialect; url: string } {
   if (url && /^postgres(ql)?:\/\//.test(url)) return { dialect: "postgres", url };
   return { dialect: "sqlite", url: url || "sqlite://data/openalternance.db" };
+}
+
+export function bootError(env: Record<string, string | undefined>, d: Dialect): string | null {
+  return env.VERCEL && d === "sqlite" ? "SQLite impossible sur Vercel: définir DATABASE_URL (Postgres/Neon)" : null;
 }
 
 const resolved = resolveDb(process.env.DATABASE_URL);
@@ -17,14 +21,20 @@ function open(): Bun.SQL {
     // prepare: false, cached SELECT * plans break after ALTER TABLE (column count mismatch).
     return new Bun.SQL({ url: resolved.url, tls: true, prepare: false });
   }
+  const boot = bootError(process.env, dialect);
+  if (boot) throw new Error(boot);
   const path = resolved.url.replace(/^sqlite:\/\//, "");
-  if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
+  if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   return new Bun.SQL(resolved.url);
 }
 // Bun.SQL connects lazily, so importing this in tests is safe.
 export const sql = open();
 // SQLite ignores ON DELETE CASCADE unless enabled per connection.
-if (dialect === "sqlite") await sql.unsafe("PRAGMA foreign_keys = ON");
+if (dialect === "sqlite") {
+  await sql.unsafe("PRAGMA foreign_keys = ON");
+  const file = resolved.url.replace(/^sqlite:\/\//, "");
+  if (file !== ":memory:") chmodSync(file, 0o600);
+}
 
 export function schema(d: Dialect): string[] {
   const pg = d === "postgres";

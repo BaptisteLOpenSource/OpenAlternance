@@ -1,35 +1,45 @@
-# Alternance tracker
+# OpenAlternance
 
-Suivi de mes démarchages en alternance : entreprises, contacts, échanges, relances, lettres.
-Dashboard Bun + Preact déployé sur Vercel. Données dans Neon Postgres, seule source de vérité.
+Suivi de démarchages en alternance : entreprises, contacts, échanges, relances, lettres de motivation.
+Dashboard Bun + Preact, à héberger chez soi (SQLite) ou en ligne (Vercel + Neon Postgres). Même code dans les deux cas.
 
-## Installation
+> Captures d'écran : à venir.
 
-Prérequis : [Bun](https://bun.sh), `.env` avec `DATABASE_URL` (Neon) et `OPENALTERNANCE_PASSWORD`.
+## Choisir son mode
+
+| | Local | En ligne |
+|---|---|---|
+| Base | fichier SQLite `data/openalternance.db` | Neon Postgres |
+| Accès | `http://127.0.0.1:3000`, un seul poste | partout, via Vercel |
+| Coût | aucun | offres gratuites Vercel et Neon suffisantes |
+| Sauvegarde | copier le fichier `.db` | branches et sauvegardes Neon |
+| Guide | [installation locale](docs/installation-locale.md) | [installation en ligne](docs/installation-en-ligne.md) |
+
+## Démarrage rapide (local)
+
+Prérequis : [Bun](https://bun.sh).
 
 ```bash
 bun install
+cp .env.example .env   # puis choisir OPENALTERNANCE_PASSWORD (16 caractères minimum)
+bun run setup          # crée la base et ajoute des entreprises d'exemple
+bun run serve          # -> http://127.0.0.1:3000
 ```
 
-## Lancer
+`bun run setup` ne remplit les exemples que si la base est vide.
+
+## Fonctionnalités
+
+Depuis le dashboard : ajouter une entreprise, un contact, un échange, changer un statut. En terminal :
 
 ```bash
-bun run serve                 # -> http://127.0.0.1:3000
-bun run cli liste             # même données, en terminal
-bun test
-```
-
-Depuis le dashboard : ajouter une entreprise, un contact, un échange, changer un statut.
-Chaque écriture va directement dans Neon.
-
-En CLI :
-
-```bash
-bun run cli add "Acme SARL" --ville Lyon --site https://acme.test
-bun run cli personne "Acme SARL" --nom "Jane Doe" --role RH --email jane@acme.test
+bun run cli liste
+bun run cli add "Acme SARL" --ville Lyon --site https://example.com
+bun run cli personne "Acme SARL" --nom "Jane Doe" --role RH --email jane@example.com
 bun run cli contact "Acme SARL" mail --note "CV envoyé"        # relance auto dans 7 j
 bun run cli contact "Acme SARL" entretien --date 2026-10-20    # annule la relance
 bun run cli statut "Acme SARL" refuse
+bun test
 ```
 
 Types d'échange : `mail`, `appel`, `candidature`, `relance`, `entretien`, `reponse`, `depot` (CV déposé en physique, statut `contacte`).
@@ -50,7 +60,6 @@ et `Copier la vue` (lignes filtrées, colle dans Excel). Les colonnes CV, relanc
 les échanges. Les champs du tableau sont éditables dans la fiche entreprise.
 
 Page `Entretiens` : échanges de type `entretien`, chacun lié à une entreprise. Séparés en `À venir` et `Passés`.
-`bun run migrate` ajoute les nouvelles colonnes du schéma.
 
 ## Commandes et clic droit
 
@@ -58,23 +67,18 @@ Page `Entretiens` : échanges de type `entretien`, chacun lié à une entreprise
 Clic droit hors champ : menu d'actions de la page courante, `Actualiser` toujours présent.
 Bouton réglages (en-tête) : coche les actions à garder dans le clic droit (choix stocké dans le navigateur).
 
-## Données
+## Lettres et documents
 
-Neon Postgres est la seule source de vérité : entreprises, contacts, échanges, lettres et PDF.
-Pas d'export local. `bun run migrate` crée le schéma, `bun run cli sync-files` pousse
-`lettres/*.md`, `lettres/*.pdf`, `data/cv.pdf` et `data/logo.png` en base.
+Les lettres de motivation et documents (CV, modèles de mail) sont stockés en base. `bun run cli sync-files`
+pousse `lettres/*.md`, `lettres/*.pdf`, `data/cv.pdf` et `data/logo.png` ; `lettres/_template.md` sert de modèle.
 
-## Lettres de motivation
+## Documentation
 
-Dossier `lettres/` versionné, un fichier `.md` par entreprise (ex. `lettres/acme-sarl.md`).
-Ouvrable directement comme vault Obsidian. `.obsidian/` est ignoré (config locale).
+- [Installation locale](docs/installation-locale.md)
+- [Installation en ligne](docs/installation-en-ligne.md)
+- [Architecture](ARCHITECTURE.md)
+- [Décisions](docs/decisions/)
 
-## Structure
+## Licence
 
-- `src/logic.ts` : règles métier pures (dates de relance, transitions de statut)
-- `src/db.ts` : connexion Neon + schéma
-- `src/repo.ts` : requêtes
-- `api/index.ts` : fonction Vercel, toutes les routes `/api/*` y sont réécrites (`vercel.json`)
-- `src/web/` : dashboard Preact + Tailwind (composants shadcn dans `ui.tsx`, appels API dans `store.ts`)
-- `src/server.ts` : serveur Bun (bundle du dashboard + API JSON)
-- `src/cli.ts` : commandes terminal
+MIT, voir [LICENSE](LICENSE).

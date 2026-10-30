@@ -29,7 +29,7 @@ export function LoginPage({ onLogin }: { onLogin: (password: string) => Promise<
           <div class="flex size-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <Trophy class="size-5" />
           </div>
-          <h1 class="text-2xl font-semibold tracking-tight">Alternance</h1>
+          <h1 class="text-2xl font-semibold tracking-tight">OpenAlternance</h1>
           <p class="text-sm text-muted-foreground">Suivi des démarches</p>
         </div>
         <form onSubmit={submit} class="grid gap-3">

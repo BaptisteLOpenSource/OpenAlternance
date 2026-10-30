@@ -173,7 +173,7 @@ function Sidebar({
             <Trophy class="size-4" />
           </div>
           <div class={cn("grid leading-tight", rail && "md:hidden")}>
-            <span class="font-semibold">Alternance</span>
+            <span class="font-semibold">OpenAlternance</span>
             <span class="text-xs text-muted-foreground">Suivi des démarches</span>
           </div>
           <Button variant="ghost" size="icon" class="ml-auto md:hidden" onClick={onClose} aria-label="Fermer le menu">
@@ -245,7 +245,7 @@ function Sidebar({
               </div>
               <div class={cn("grid flex-1 text-sm leading-tight", rail && "md:hidden")}>
                 <span class="font-medium">{state?.profil.username || "Candidat"}</span>
-                <span class="text-xs text-muted-foreground">Alternance 2026</span>
+                <span class="text-xs text-muted-foreground">OpenAlternance</span>
               </div>
               <ChevronsUpDown class={cn("size-4 text-muted-foreground", rail && "md:hidden")} />
             </button>
@@ -335,7 +335,7 @@ function Header({
         </Button>
         <div class="hidden h-4 w-px bg-border sm:block" />
         <nav class="hidden items-center gap-1.5 text-sm sm:flex" aria-label="Fil d'Ariane">
-          <span class="text-muted-foreground">Alternance</span>
+          <span class="text-muted-foreground">OpenAlternance</span>
           <span class="text-muted-foreground">/</span>
           <span class="font-medium">{title}</span>
         </nav>

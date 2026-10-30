@@ -198,7 +198,7 @@ export async function reporterRelances(): Promise<void> {
       SELECT id, prochaine_relance, statut FROM companies WHERE prochaine_relance < ${now}`;
     for (const r of due) {
       if ((CLOSING_STATUTS as ReadonlySet<string>).has(r.statut)) continue;
-      await tx`UPDATE companies SET retard = retard + ${daysBetween(r.prochaine_relance, now)}, prochaine_relance = ${now} WHERE id = ${r.id}`;
+      await tx`UPDATE companies SET retard = retard + ${daysBetween(r.prochaine_relance, now)}, prochaine_relance = ${now} WHERE id = ${r.id} AND prochaine_relance = ${r.prochaine_relance}`;
     }
   });
 }

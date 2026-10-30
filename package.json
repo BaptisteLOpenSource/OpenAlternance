@@ -7,6 +7,7 @@
     "cli": "bun src/cli.ts",
     "serve": "bun src/server.ts",
     "build": "bun scripts/build.ts",
+    "setup": "bun src/cli.ts setup",
     "migrate": "bun src/cli.ts migrate",
     "test": "bun test src",
     "typecheck": "tsc --noEmit",

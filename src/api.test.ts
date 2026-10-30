@@ -9,7 +9,7 @@ if (DB === process.env.DATABASE_URL) throw new Error("TEST_DATABASE_URL = DATABA
 process.env.DATABASE_URL = DB;
 process.env.OPENALTERNANCE_PASSWORD = "pw-de-test";
 process.env.OPENALTERNANCE_PASSWORD ??= "pw-de-test";
-const { handle } = await import("./api");
+const { handle, bootError } = await import("./api");
 const ORIGIN = "http://127.0.0.1:3000";
 const req = (path: string, init: RequestInit & { origin?: string } = {}) =>
   handle(
@@ -18,6 +18,14 @@ const req = (path: string, init: RequestInit & { origin?: string } = {}) =>
       headers: { "content-type": "application/json", ...(init.origin ? { origin: init.origin } : {}), ...(init.headers ?? {}) },
     }),
   );
+
+describe("bootError", () => {
+  test("SQLite sur Vercel refusé", () => {
+    expect(bootError({ VERCEL: "1" }, "sqlite")).toMatch(/SQLite.*Vercel/);
+    expect(bootError({ VERCEL: "1" }, "postgres")).toBeNull();
+    expect(bootError({}, "sqlite")).toBeNull();
+  });
+});
 
 describe("gates sans base", () => {
   test("API sans cookie de session -> 401 JSON", async () => {

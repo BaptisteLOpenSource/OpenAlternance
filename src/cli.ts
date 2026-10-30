@@ -3,6 +3,7 @@ import { readdir } from "node:fs/promises";
 import { parseArgs } from "node:util";
 import { migrate, sql } from "./db";
 import { STATUTS, TYPES, oneOf, type InteractionType, type Statut } from "./logic";
+import { setup } from "./setup";
 import { addCompany, addContact, listCompanies, logInteraction, setStatut } from "./repo";
 
 const { values, positionals } = parseArgs({
@@ -24,6 +25,7 @@ const { values, positionals } = parseArgs({
 
 const USAGE = `usage:
   migrate
+  setup   (migrate + exemples si la base est vide)
   add <entreprise> [--ville --site --notes]
   personne <entreprise> --nom <nom> [--role --email --tel]
   contact <entreprise> <${TYPES.join("|")}> [--date YYYY-MM-DD] [--delai 7] [--note]
@@ -44,6 +46,11 @@ try {
     case "migrate": {
       await migrate();
       console.log("schéma à jour");
+      break;
+    }
+    case "setup": {
+      const { seeded } = await setup();
+      console.log(seeded ? "schéma à jour, exemples ajoutés" : "schéma à jour, données existantes conservées");
       break;
     }
     case "add": {

@@ -1,5 +1,5 @@
 import { SESSION_DAYS, clearSessionCookie, newSessionToken, passwordMatches, sessionCookie, sessionTokenFrom } from "./auth";
-import { sql } from "./db";
+import { dialect, sql, type Dialect } from "./db";
 import { FICHE_TEXTES, LETTRE_STATUTS, MAIL_CANAUX, NOM_FICHIER_DEFAUT, STATUTS, SUIVIS, TYPES, delaiDays, documentFile, isoAgo, isoDate, oneOf, stripFrontmatter, today } from "./logic";
 import { MAX_PDF_BASE64, pdfToHtml, renderDocument } from "./documents";
 import * as repo from "./repo";
@@ -218,9 +218,15 @@ export async function handle(req: Request): Promise<Response> {
   }
 }
 
+export function bootError(env: Record<string, string | undefined>, d: Dialect): string | null {
+  return env.VERCEL && d === "sqlite" ? "SQLite impossible sur Vercel: définir DATABASE_URL (Postgres/Neon)" : null;
+}
+
 async function route(req: Request): Promise<Response> {
   const path = new URL(req.url).pathname;
   if (!path.startsWith("/api/")) return notFound();
+  const boot = bootError(process.env, dialect);
+  if (boot) return json({ error: boot }, 500);
   if (!PASSWORD) return json({ error: "OPENALTERNANCE_PASSWORD non configuré" }, 500);
   if (!isTrustedRequest(req)) return json({ error: "Forbidden" }, 403);
   if (req.method === "POST" && path === "/api/login") return login(req);

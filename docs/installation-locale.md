@@ -48,3 +48,6 @@ Relance `bun run setup` après tout changement d'URL : c'est une base différent
 
 Le serveur écoute sur `127.0.0.1` uniquement. Le mot de passe reste demandé : 10 échecs en 15 minutes
 bloquent l'IP, les sessions durent 30 jours.
+
+Ne l'expose jamais sur `0.0.0.0` ni derrière un reverse proxy : la limite de débit se base sur l'adresse
+du socket et le serveur refuse tout en-tête `Host` autre que `127.0.0.1` ou `localhost`.

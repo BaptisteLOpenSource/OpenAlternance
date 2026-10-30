@@ -33,7 +33,8 @@ par la même commande (`bun run migrate` fait la migration seule).
 ## Liste de contrôle sécurité
 
 - `vercel.json` pose déjà CSP, HSTS, `X-Frame-Options: DENY` et `nosniff`.
-- Limite de débit : 10 connexions échouées par 15 minutes et par IP.
+- Limite de débit : 10 connexions échouées par 15 minutes et par IP, basée sur l'en-tête `X-Forwarded-For` posé par Vercel (valable uniquement derrière Vercel).
+- Mot de passe de 16 caractères minimum, imposé : sinon toutes les routes `/api` répondent 500.
 - Sessions de 30 jours stockées côté serveur ; la déconnexion les révoque.
 - Ne jamais committer `.env` (ignoré par git).
 - La protection de déploiement Vercel (mot de passe ou SSO devant l'application) est optionnelle, en plus du mot de passe applicatif.

@@ -40,14 +40,17 @@ export function CompaniesPage({
   send,
   onOpen,
   openCompany,
+  filter,
+  onFilter,
 }: {
   state: AppState;
   search: string;
   send: Send;
   onOpen: Open;
   openCompany: (id: number) => void;
+  filter: Statut | "";
+  onFilter: (f: Statut | "") => void;
 }) {
-  const [filter, setFilter] = useState<Statut | "">("");
   const [sort, setSort] = useState<{ key: SortKey; asc: boolean }>({ key: "nom", asc: true });
   const query = search.trim().toLowerCase();
   const rows = state.companies
@@ -89,7 +92,7 @@ export function CompaniesPage({
         </CardAction>
       </CardHeader>
       <CardContent class="grid gap-4">
-        <StatutFilter companies={state.companies} value={filter} onChange={setFilter} />
+        <StatutFilter companies={state.companies} value={filter} onChange={onFilter} />
         <Table>
           <TableHeader>
             <TableRow class="hover:bg-transparent">
@@ -107,7 +110,7 @@ export function CompaniesPage({
                 <TableCell colSpan={6} class="py-10 text-center text-muted-foreground">
                   <p>Aucune entreprise ne correspond.</p>
                   {filter !== "" && (
-                    <Button variant="outline" size="sm" class="mt-3" onClick={() => setFilter("")}>
+                    <Button variant="outline" size="sm" class="mt-3" onClick={() => onFilter("")}>
                       Réinitialiser le filtre
                     </Button>
                   )}
@@ -117,7 +120,7 @@ export function CompaniesPage({
             {rows.map((c) => {
               const contacts = c.contacts.join(", ") || "-";
               return (
-                <TableRow key={c.id} class="cursor-pointer" onClick={() => openCompany(c.id)}>
+                <TableRow key={c.id} data-company={String(c.id)} class="cursor-pointer" onClick={() => openCompany(c.id)}>
                   <TableCell class="sticky left-0 z-10 bg-card py-3">
                     <a
                       href={`#/entreprises/${c.id}`}

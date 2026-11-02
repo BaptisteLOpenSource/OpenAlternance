@@ -95,6 +95,12 @@ export const COMMANDS: Command[] = [
     run: ({ send, company, lettre }) =>
       company && lettre && confirm(`Supprimer la lettre de ${company.nom} ?`) && send("lettre-supprimer", { entreprise: company.nom }),
   },
+  {
+    id: "site-web",
+    label: "Ouvrir le site web",
+    scope: ["company", "entreprises"],
+    run: ({ company }) => company?.site && window.open(company.site, "_blank", "noopener"),
+  },
   { id: "template", label: "Ouvrir le template", scope: ["lettres"], run: () => (location.hash = "#/lettres/_template.md") },
 ];
 

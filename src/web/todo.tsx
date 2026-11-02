@@ -34,7 +34,9 @@ export function TodoPage({ state, send }: { state: AppState; send: Send }) {
               <li key={c.id} class="grid gap-3 rounded-lg border border-border/20 bg-background/40 p-3">
                 <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
                   <div class="min-w-0 flex-1">
-                    <p class="truncate font-medium">{c.nom}</p>
+                    <a href={`#/entreprises/${c.id}`} class="block truncate font-medium underline-offset-2 hover:underline">
+                      {c.nom}
+                    </a>
                     <StatutBadge statut={c.statut} class="mt-1" />
                   </div>
                   <RelanceBadge company={c} today={today} />

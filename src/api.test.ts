@@ -4,14 +4,11 @@ import { join } from "node:path";
 
 // db.ts and api.ts read env at import, before beforeAll: point them at the
 // test DB here, or Bun's .env sends DB tests to production.
-const DB = process.env.TEST_DATABASE_URL;
-if (DB) {
-  if (DB === process.env.DATABASE_URL) throw new Error("TEST_DATABASE_URL = DATABASE_URL: refuse de tester sur la prod");
-  process.env.DATABASE_URL = DB;
-  process.env.OPENALTERNANCE_PASSWORD = "pw-de-test";
-}
-process.env.OPENALTERNANCE_PASSWORD ??= "pw-de-test";
-const { handle } = await import("./api");
+const DB = process.env.TEST_DATABASE_URL ?? "sqlite://:memory:";
+if (DB === process.env.DATABASE_URL) throw new Error("TEST_DATABASE_URL = DATABASE_URL: refuse de tester sur la prod");
+process.env.DATABASE_URL = DB;
+process.env.OPENALTERNANCE_PASSWORD = "mot-de-passe-de-test-ok";
+const { handle, passwordProblem } = await import("./api");
 const ORIGIN = "http://127.0.0.1:3000";
 const req = (path: string, init: RequestInit & { origin?: string } = {}) =>
   handle(
@@ -20,6 +17,15 @@ const req = (path: string, init: RequestInit & { origin?: string } = {}) =>
       headers: { "content-type": "application/json", ...(init.origin ? { origin: init.origin } : {}), ...(init.headers ?? {}) },
     }),
   );
+
+describe("passwordProblem", () => {
+  test("vide, court ou placeholder refusés", () => {
+    expect(passwordProblem("")).toMatch(/non configuré/);
+    expect(passwordProblem("court")).toMatch(/16/);
+    expect(passwordProblem("change-me-min-16-chars")).toMatch(/16/);
+    expect(passwordProblem("0123456789abcdef")).toBeNull();
+  });
+});
 
 describe("gates sans base", () => {
   test("API sans cookie de session -> 401 JSON", async () => {
@@ -88,7 +94,7 @@ test("hashes CSP = scripts inline du build (si dist existe)", () => {
   }
 });
 
-describe.skipIf(!DB)("base de test (TEST_DATABASE_URL)", () => {
+describe("base de test (TEST_DATABASE_URL)", () => {
   let api: typeof import("./api");
   let sql: typeof import("./db").sql;
   let cookie = "";
@@ -102,7 +108,7 @@ describe.skipIf(!DB)("base de test (TEST_DATABASE_URL)", () => {
     await sql`DELETE FROM companies WHERE nom LIKE 'TEST-%'`;
     await sql`DELETE FROM login_attempts`;
     await sql`DELETE FROM sessions`;
-    const res = await api.handle(new Request(`${ORIGIN}/api/login`, { method: "POST", headers: { origin: ORIGIN }, body: JSON.stringify({ password: "pw-de-test" }) }));
+    const res = await api.handle(new Request(`${ORIGIN}/api/login`, { method: "POST", headers: { origin: ORIGIN }, body: JSON.stringify({ password: "mot-de-passe-de-test-ok" }) }));
     cookie = res.headers.get("set-cookie")!.split(";")[0]!;
   });
 
@@ -123,7 +129,7 @@ describe.skipIf(!DB)("base de test (TEST_DATABASE_URL)", () => {
 
   test("mauvais mot de passe -> 401, bon -> 200 + cookie HttpOnly SameSite=Strict", async () => {
     expect((await login("mauvais")).status).toBe(401);
-    const ok = await login("pw-de-test");
+    const ok = await login("mot-de-passe-de-test-ok");
     expect(ok.status).toBe(200);
     const setCookie = ok.headers.get("set-cookie")!;
     expect(setCookie).toContain("HttpOnly");
@@ -131,8 +137,8 @@ describe.skipIf(!DB)("base de test (TEST_DATABASE_URL)", () => {
   });
 
   test("le mot de passe n'apparaît jamais dans la réponse", async () => {
-    const res = await login("pw-de-test");
-    expect(await res.text()).not.toContain("pw-de-test");
+    const res = await login("mot-de-passe-de-test-ok");
+    expect(await res.text()).not.toContain("mot-de-passe-de-test-ok");
   });
 
   test("le cookie ouvre l'état", async () => {
@@ -142,7 +148,7 @@ describe.skipIf(!DB)("base de test (TEST_DATABASE_URL)", () => {
   test("logout révoque le cookie copié", async () => {
     expect((await auth("/api/logout", { method: "POST" })).status).toBe(200);
     expect((await auth("/api/state")).status).toBe(401);
-    cookie = (await login("pw-de-test")).headers.get("set-cookie")!.split(";")[0]!;
+    cookie = (await login("mot-de-passe-de-test-ok")).headers.get("set-cookie")!.split(";")[0]!;
   });
 
   test("injection SQL dans un nom -> stockée littéralement, table intacte", async () => {
@@ -243,8 +249,25 @@ describe.skipIf(!DB)("base de test (TEST_DATABASE_URL)", () => {
   test("rate limit: 10 échecs puis 429", async () => {
     await sql`DELETE FROM login_attempts`;
     for (let i = 0; i < 10; i++) await login("raté");
-    expect((await login("pw-de-test")).status).toBe(429);
+    expect((await login("mot-de-passe-de-test-ok")).status).toBe(429);
     await sql`DELETE FROM login_attempts`;
+  });
+
+  test("rate limit: X-Forwarded-For ignoré hors Vercel (clé = adresse du socket)", async () => {
+    await sql`DELETE FROM login_attempts`;
+    const attempt = (xff: string) =>
+      api.handle(new Request(`${ORIGIN}/api/login`, { method: "POST", headers: { origin: ORIGIN, "x-forwarded-for": xff }, body: JSON.stringify({ password: "raté" }) }), "9.9.9.9");
+    for (let i = 0; i < 10; i++) await attempt(`1.1.1.${i}`);
+    expect((await attempt("2.2.2.2")).status).toBe(429);
+    await sql`DELETE FROM login_attempts`;
+  });
+
+  test("connexion réussie efface les échecs de l'IP", async () => {
+    await sql`DELETE FROM login_attempts`;
+    for (let i = 0; i < 3; i++) await login("raté");
+    expect((await login("mot-de-passe-de-test-ok")).status).toBe(200);
+    const [{ n }] = await sql<{ n: number | string }[]>`SELECT count(*) AS n FROM login_attempts`;
+    expect(Number(n)).toBe(0);
   });
 
   test("personne-supprimer retire le contact de l'état", async () => {

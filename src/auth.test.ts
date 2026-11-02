@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { passwordMatches, sessionCookie, sessionTokenFrom } from "./auth";
 
-const PASSWORD = "pw-de-test";
+const PASSWORD = "mot-de-passe-de-test-ok";
 
 test("passwordMatches accepte le bon mot de passe seulement", () => {
   expect(passwordMatches(PASSWORD, PASSWORD)).toBe(true);

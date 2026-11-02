@@ -23,6 +23,7 @@ import {
 } from "lucide-preact";
 import { type ComponentChildren, type Ref, render } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
+import type { Statut } from "../logic";
 import { COMMANDS, type Ctx, forScope, lettreOf } from "./commands";
 import { CompaniesPage } from "./companies";
 import { DashboardPage } from "./dashboard";
@@ -173,7 +174,7 @@ function Sidebar({
             <Trophy class="size-4" />
           </div>
           <div class={cn("grid leading-tight", rail && "md:hidden")}>
-            <span class="font-semibold">Alternance</span>
+            <span class="font-semibold">OpenAlternance</span>
             <span class="text-xs text-muted-foreground">Suivi des démarches</span>
           </div>
           <Button variant="ghost" size="icon" class="ml-auto md:hidden" onClick={onClose} aria-label="Fermer le menu">
@@ -245,7 +246,7 @@ function Sidebar({
               </div>
               <div class={cn("grid flex-1 text-sm leading-tight", rail && "md:hidden")}>
                 <span class="font-medium">{state?.profil.username || "Candidat"}</span>
-                <span class="text-xs text-muted-foreground">Alternance 2026</span>
+                <span class="text-xs text-muted-foreground">OpenAlternance</span>
               </div>
               <ChevronsUpDown class={cn("size-4 text-muted-foreground", rail && "md:hidden")} />
             </button>
@@ -335,7 +336,7 @@ function Header({
         </Button>
         <div class="hidden h-4 w-px bg-border sm:block" />
         <nav class="hidden items-center gap-1.5 text-sm sm:flex" aria-label="Fil d'Ariane">
-          <span class="text-muted-foreground">Alternance</span>
+          <span class="text-muted-foreground">OpenAlternance</span>
           <span class="text-muted-foreground">/</span>
           <span class="font-medium">{title}</span>
         </nav>
@@ -403,9 +404,10 @@ function App() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(() => stored("sidebar") === "collapsed");
   const [search, setSearch] = useState("");
+  const [companiesFilter, setCompaniesFilter] = useState<Statut | "">("");
   const [dialog, setDialog] = useState<DialogState>(null);
   const [palette, setPalette] = useState(false);
-  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number; companyId: number | null } | null>(null);
   const [hidden, setHidden] = useState(readHidden);
   const [base, sub] = route.split("/");
   const page = PAGES.find((p) => p.path === base) ?? PAGES[0];
@@ -437,9 +439,11 @@ function App() {
     setHidden(next);
   };
   const runner = (run: (c: Ctx) => unknown) => () => ctx && run(ctx);
+  const menuCtx = ctx && menu?.companyId != null ? { ...ctx, company: ctx.state.companies.find((c) => c.id === menu.companyId) ?? null } : ctx;
+  const menuRunner = (run: (c: Ctx) => unknown) => () => menuCtx && run(menuCtx);
   const menuItems = forScope(scope)
     .filter((c) => c.pinned || !hidden.includes(c.id))
-    .map((c) => ({ label: c.label, run: runner(c.run) }));
+    .map((c) => ({ label: c.label, run: menuRunner(c.run) }));
   const paletteItems: PaletteItem[] = state
     ? [
         ...PAGES.map((p) => ({ id: `page-${p.path}`, label: `Aller à ${p.label}`, hint: "Page", run: () => (location.hash = `#/${p.path}`) })),
@@ -450,7 +454,8 @@ function App() {
   const onContextMenu = (e: MouseEvent) => {
     if (!ctx || (e.target as Element).closest("input, textarea, select, [contenteditable]")) return;
     e.preventDefault();
-    setMenu({ x: e.clientX, y: e.clientY });
+    const row = (e.target as Element).closest("[data-company]");
+    setMenu({ x: e.clientX, y: e.clientY, companyId: row ? Number(row.getAttribute("data-company")) : null });
   };
 
   useEffect(() => {
@@ -549,7 +554,7 @@ function App() {
               {page.path === "compte" && <ComptePage profil={state.profil} send={send} />}
               {page.path === "entreprises" &&
                 (companyId === null ? (
-                  <CompaniesPage state={state} search={search} send={send} onOpen={setDialog} openCompany={openCompany} />
+                  <CompaniesPage state={state} search={search} send={send} onOpen={setDialog} openCompany={openCompany} filter={companiesFilter} onFilter={setCompaniesFilter} />
                 ) : (
                   <CompanyPage state={state} id={companyId} send={send} onOpen={setDialog} />
                 ))}

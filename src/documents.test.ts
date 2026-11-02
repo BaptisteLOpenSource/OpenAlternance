@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import { escapeHtml, renderDocument, textToHtml } from "./documents";
+import { renderDocument, textToHtml } from "./documents";
+import { escapeHtml } from "./logic";
 
 test("texte PDF : tout échappé, aucune balise ni script du fichier source", () => {
   const html = textToHtml(["<script>alert(1)</script>\n\n<img src=x onerror=alert(2)>"]);

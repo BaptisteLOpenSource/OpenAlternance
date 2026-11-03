@@ -10,8 +10,8 @@ Pour le développement depuis le code, voir [Installation développeur](/install
 
 ## Télécharger
 
-Récupère `OpenAlternance-Setup.exe` sur la page des
-[versions](https://github.com/BaptisteLOpenSource/OpenAlternance/releases/latest).
+[Télécharger OpenAlternance-Setup.exe](https://github.com/BaptisteLOpenSource/OpenAlternance/releases/latest/download/OpenAlternance-Setup.exe) (dernière version,
+téléchargement direct). Notes de version : page des [versions](https://github.com/BaptisteLOpenSource/OpenAlternance/releases/latest).
 
 ## Installer
 

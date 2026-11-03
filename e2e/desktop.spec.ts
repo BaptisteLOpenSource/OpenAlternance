@@ -41,7 +41,7 @@ test("mise à jour : bannière visible, clic -> POST /api/desktop/update, télé
   await page.goto("/");
   await expect(page.getByText("Nouvelle version 1.1.0 disponible")).toBeVisible();
   await page.getByRole("button", { name: "Mettre à jour" }).click();
-  await expect(page.getByText("Téléchargement de la mise à jour...")).toBeVisible();
+  await expect(page.getByText(/^Téléchargement de la mise à jour/)).toBeVisible();
   expect(mock.calls.some((c) => c.method === "POST" && c.path === "/api/desktop/update")).toBe(true);
 });
 

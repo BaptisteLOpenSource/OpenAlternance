@@ -78,7 +78,13 @@ async function desktopRoute(req: Request, path: string): Promise<Response> {
     if (!update) return json({ error: "aucune mise à jour" }, 400);
     const file = await downloadUpdate(update.url, tmpdir());
     // ponytail: fixed delay lets the reply flush; ack-based is exact.
-    setTimeout(() => runInstaller(file), 500);
+    setTimeout(() => {
+      try {
+        runInstaller(file);
+      } catch (error) {
+        log(error);
+      }
+    }, 500);
     return json({ ok: true });
   }
   return json({ error: "Introuvable" }, 404);

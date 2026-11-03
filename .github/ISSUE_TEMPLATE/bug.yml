@@ -1,0 +1,33 @@
+name: Bug
+description: Signaler un comportement incorrect
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Version ou commit
+      description: Sortie de `git rev-parse --short HEAD`, ou version affichée. Facultatif.
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Mode d'exécution
+      options:
+        - SQLite local
+        - Postgres Vercel
+    validations:
+      required: true
+  - type: textarea
+    id: etapes
+    attributes:
+      label: Étapes pour reproduire
+      placeholder: |
+        1. ...
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: attendu
+    attributes:
+      label: Comportement attendu
+    validations:
+      required: true

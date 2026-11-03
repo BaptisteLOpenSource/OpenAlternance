@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Idée et discussion
+    url: https://github.com/BaptisteLOpenSource/OpenAlternance/discussions
+    about: Échanger avant d'ouvrir une issue.
+  - name: Proposer du code
+    url: https://github.com/BaptisteLOpenSource/OpenAlternance/blob/dev/CONTRIBUTING.md
+    about: Fork, branche depuis dev, pull request.

@@ -46,6 +46,7 @@ test("dot-segment traversal and lookalike host are refused by both", async () =>
   const bad = [
     "https://github.com/BaptisteLOpenSource/OpenAlternance/releases/download/../../../../attacker/repo/raw/main/x.exe",
     "https://github.com.evil.example/BaptisteLOpenSource/OpenAlternance/releases/download/v0.2.0/OpenAlternance-Setup.exe",
+    "https://github.com/BaptisteLOpenSource/OpenAlternance/releases/download/v0.2.0/..%2f..%2fattacker/x.exe",
   ];
   for (const url of bad) {
     expect(await latestRelease(fakeFetch({ tag_name: "v0.2.0", assets: [{ name: "OpenAlternance-Setup.exe", browser_download_url: url }] }))).toBeNull();

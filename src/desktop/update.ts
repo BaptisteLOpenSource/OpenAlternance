@@ -1,14 +1,14 @@
 import { win32 } from "node:path";
 
 const RELEASES_API = "https://api.github.com/repos/BaptisteLOpenSource/OpenAlternance/releases/latest";
-const RELEASE_PATH = "/BaptisteLOpenSource/OpenAlternance/releases/download/";
 const SETUP = "OpenAlternance-Setup.exe";
+const RELEASE_ASSET = /^\/BaptisteLOpenSource\/OpenAlternance\/releases\/download\/v\d+\.\d+\.\d+\/OpenAlternance-Setup\.exe$/;
 
-// startsWith alone is bypassed by ../ segments: parse first.
+// Exact asset path: prefix checks are bypassed by ../ and %2f tricks.
 function isReleaseUrl(url: string): boolean {
   try {
     const u = new URL(url);
-    return u.origin === "https://github.com" && u.pathname.startsWith(RELEASE_PATH);
+    return u.origin === "https://github.com" && RELEASE_ASSET.test(u.pathname) && !u.search && !u.hash;
   } catch {
     return false;
   }
@@ -25,7 +25,7 @@ export function isNewer(latest: string, current: string): boolean {
   return false;
 }
 
-// Offline or any shape surprise -> null: a failed update check must never block start.
+// Offline or bad shape -> null: update check must not block start.
 export async function latestRelease(fetchFn: typeof fetch = fetch): Promise<{ version: string; url: string } | null> {
   try {
     const res = await fetchFn(RELEASES_API, {

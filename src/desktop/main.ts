@@ -119,7 +119,9 @@ async function openWindow(url: string): Promise<void> {
     Bun.spawn(["cmd", "/c", "start", "", ...target], { stdin: "ignore", stdout: "ignore", stderr: "ignore" }).exited;
   try {
     if ((await start(["msedge", `--app=${url}`])) === 0) return;
-  } catch {}
+  } catch (error) {
+    log(error);
+  }
   await start([url]);
 }
 

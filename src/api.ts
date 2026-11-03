@@ -15,12 +15,11 @@ export function passwordProblem(password: string): string | null {
   return null;
 }
 
-// Local without a password is open; Vercel always requires one.
 export function authRequired(env: Record<string, string | undefined>): boolean {
   return Boolean(env.VERCEL || env.OPENALTERNANCE_PASSWORD);
 }
 
-// Changing the password changes the key: every session issued under the old one stops matching.
+// Key embeds the password fingerprint: old-password sessions stop matching.
 const sessionKey = (cookieToken: string): string => `${digest(PASSWORD).toString("hex").slice(0, 16)}.${cookieToken}`;
 
 const json = (body: unknown, status = 200, headers?: HeadersInit) => Response.json(body, { status, headers });

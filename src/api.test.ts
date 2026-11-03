@@ -1,6 +1,7 @@
 import { describe, expect, test, beforeAll, afterAll } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { createHash } from "node:crypto";
 
 // db.ts and api.ts read env at import, before beforeAll: point them at the
 // test DB here, or Bun's .env sends DB tests to production.
@@ -10,6 +11,7 @@ process.env.DATABASE_URL = DB;
 process.env.OPENALTERNANCE_PASSWORD = "mot-de-passe-de-test-ok";
 const { handle, passwordProblem, authRequired } = await import("./api");
 const ORIGIN = "http://127.0.0.1:3000";
+const fingerprint = (password: string) => createHash("sha256").update(password).digest("hex").slice(0, 16);
 const req = (path: string, init: RequestInit & { origin?: string } = {}) =>
   handle(
     new Request(`${ORIGIN}${path}`, {
@@ -136,8 +138,18 @@ describe("base de test (TEST_DATABASE_URL)", () => {
     expect(setCookie).toContain("SameSite=Strict");
   });
 
+  test("session stockée = empreinte du mot de passe + jeton, jamais le jeton brut", async () => {
+    const ok = await login("mot-de-passe-de-test-ok");
+    const cookieToken = ok.headers.get("set-cookie")!.match(/openalternance=([^;]+)/)![1]!;
+    const [row] = await sql<{ token: string }[]>`SELECT token FROM sessions WHERE token LIKE ${`%.${cookieToken}`}`;
+    expect(row?.token).toBe(`${fingerprint("mot-de-passe-de-test-ok")}.${cookieToken}`);
+    expect(row?.token).not.toBe(cookieToken);
+  });
+
   test("session liée à un ancien mot de passe -> 401", async () => {
-    await sql`INSERT INTO sessions (token, created_at) VALUES (${"0000000000000000.ancien"}, ${new Date().toISOString()})`;
+    const oldPrefix = fingerprint("un-ancien-mot-de-passe");
+    expect(oldPrefix).not.toBe(fingerprint("mot-de-passe-de-test-ok"));
+    await sql`INSERT INTO sessions (token, created_at) VALUES (${`${oldPrefix}.ancien`}, ${new Date().toISOString()})`;
     const res = await auth("/api/state", { headers: { cookie: "openalternance=ancien" } });
     expect(res.status).toBe(401);
   });
@@ -348,11 +360,12 @@ describe("authRequired", () => {
 const openScript = `
 if (!process.env.VERCEL) await (await import("./src/db")).migrate();
 const { handle } = await import("./src/api");
-const res = await handle(new Request("http://127.0.0.1:3000/api/state"));
+const spawned = JSON.parse(process.env.SPAWN_REQ!) as { method: string; path: string; headers: Record<string, string> };
+const res = await handle(new Request("http://127.0.0.1:3000" + spawned.path, { method: spawned.method, headers: spawned.headers, body: spawned.method === "GET" ? undefined : "{}" }));
 console.log(JSON.stringify({ status: res.status, body: await res.text() }));`;
 // Vercel refuses sqlite at import: a Postgres URL is only a stub, nothing connects before the 500.
-const spawnApi = async (env: Record<string, string>) => {
-  const base: Record<string, string | undefined> = { ...process.env, DATABASE_URL: "sqlite://:memory:" };
+const spawnApi = async (env: Record<string, string>, request = { method: "GET", path: "/api/state", headers: {} }) => {
+  const base: Record<string, string | undefined> = { ...process.env, DATABASE_URL: "sqlite://:memory:", SPAWN_REQ: JSON.stringify(request) };
   delete base.OPENALTERNANCE_PASSWORD;
   delete base.VERCEL;
   const p = Bun.spawn(["bun", "-e", openScript], { cwd: join(import.meta.dir, ".."), env: { ...base, ...env }, stdout: "pipe", stderr: "pipe" });
@@ -364,6 +377,11 @@ const spawnApi = async (env: Record<string, string>) => {
 test("sans mot de passe en local: API ouverte sans cookie", async () => {
   const out = await spawnApi({});
   expect(out.status).toBe(200);
+});
+
+test("sans mot de passe en local: écriture d'une autre origine -> 403 (CSRF)", async () => {
+  const out = await spawnApi({}, { method: "POST", path: "/api/entreprise", headers: { origin: "http://evil.test" } });
+  expect(out.status).toBe(403);
 });
 
 test("VERCEL sans mot de passe: 500 non configuré", async () => {

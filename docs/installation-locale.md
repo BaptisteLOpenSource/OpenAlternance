@@ -1,4 +1,7 @@
-# Installation locale
+---
+title: Installation locale
+description: Lancer OpenAlternance sur ta machine en mode SQLite, sans base distante.
+---
 
 Mode SQLite : tout tourne sur ta machine, aucune base distante.
 

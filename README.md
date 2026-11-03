@@ -123,6 +123,8 @@ Les contributions sont bienvenues.
 
 Bug ou idée : ouvrir une [issue](https://github.com/BaptisteLOpenSource/OpenAlternance/issues).
 
+Guide complet : [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Licence
 
 [MIT](LICENSE) © 2026 [BaptisteLeDev](https://github.com/BaptisteLeDev) et les contributeurs d'OpenAlternance.

@@ -1,0 +1,9 @@
+---
+import Default from '@astrojs/starlight/components/Footer.astro';
+import FeedbackButton from './FeedbackButton.astro';
+
+const { entry } = Astro.locals.starlightRoute;
+---
+
+<Default><slot /></Default>
+{entry.data.title !== '404' && <FeedbackButton pageTitle={entry.data.title} />}

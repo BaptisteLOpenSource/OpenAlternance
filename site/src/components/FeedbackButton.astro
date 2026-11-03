@@ -1,0 +1,29 @@
+---
+interface Props {
+	pageTitle: string;
+}
+
+const { pageTitle } = Astro.props;
+const href = `https://github.com/BaptisteLOpenSource/OpenAlternance/issues/new?template=feature.yml&title=${encodeURIComponent(pageTitle)}`;
+---
+
+<a class="feedback" href={href} target="_blank" rel="noopener">Signaler un problème ou proposer une amélioration</a>
+
+<style>
+	.feedback {
+		display: inline-block;
+		margin-top: 1rem;
+		padding: 0.6rem 1.1rem;
+		border: 1px solid var(--sl-color-gray-5);
+		border-radius: 999px;
+		color: var(--sl-color-white);
+		font-size: var(--sl-text-sm);
+		font-weight: 600;
+		text-decoration: none;
+	}
+
+	.feedback:hover {
+		border-color: var(--sl-color-accent);
+		background: var(--sl-color-accent-low);
+	}
+</style>

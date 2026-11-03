@@ -1,0 +1,30 @@
+name: Idée ou amélioration
+description: Proposer une fonctionnalité ou une amélioration
+labels: [enhancement]
+body:
+  - type: textarea
+    id: probleme
+    attributes:
+      label: Problème
+      description: Quel besoin ou quelle friction veux-tu résoudre ?
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Solution proposée
+      description: Comment imagines-tu la réponse ? Facultatif.
+  - type: dropdown
+    id: zone
+    attributes:
+      label: Zone concernée
+      options:
+        - Entreprises
+        - Todo
+        - Tableur
+        - Entretiens
+        - Lettres
+        - Installation
+        - Autre
+    validations:
+      required: true

@@ -3,14 +3,9 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
-    inputs:
-      dry_run:
-        description: "Build only: upload the setup as an artifact, no GitHub release"
-        type: boolean
-        default: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   windows:
@@ -39,15 +34,24 @@ jobs:
           ISCC="/c/Program Files (x86)/Inno Setup 6/ISCC.exe"
           if [ ! -f "$ISCC" ]; then choco install innosetup -y --no-progress; fi
           "$ISCC" "/DAppVersion=$(node -p "require('./package.json').version")" installer/openalternance.iss
-      - name: Upload setup (dry run)
-        if: ${{ !(github.event_name == 'push' && !inputs.dry_run) }}
+      - name: Upload setup
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: OpenAlternance-Setup
           path: installer/Output/OpenAlternance-Setup.exe
           if-no-files-found: error
+  publish:
+    if: github.event_name == 'push'
+    needs: windows
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Download setup
+        run: gh run download "$GITHUB_RUN_ID" -n OpenAlternance-Setup -D dist
       - name: Publish release
-        if: ${{ github.event_name == 'push' && !inputs.dry_run }}
-        run: gh release create "$GITHUB_REF_NAME" installer/Output/OpenAlternance-Setup.exe --generate-notes
-        env:
-          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/OpenAlternance-Setup.exe --generate-notes

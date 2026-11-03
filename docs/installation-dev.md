@@ -45,8 +45,11 @@ bun run desktop  # fenêtre sur http://127.0.0.1:3737
 
 Elle n'a pas besoin de `setup` : la base est créée au démarrage. Attention : elle lit la même
 configuration et les mêmes données que l'app installée (`%APPDATA%\OpenAlternance\` et
-`%LOCALAPPDATA%\OpenAlternance\`). Pour tester sans toucher à ta vraie base, supprime ou renomme
-`config.json` avant de lancer, ou définis `OPENALTERNANCE_DESKTOP_PORT` pour éviter le conflit de port.
+`%LOCALAPPDATA%\OpenAlternance\`). Renommer `config.json` ne suffit pas : la base reste la vraie.
+Pour tester sans toucher à ta base, redirige les deux variables vers un dossier temporaire avant
+de lancer, par exemple en PowerShell : `$env:APPDATA="$env:TEMP\oa-dev\roaming"` et
+`$env:LOCALAPPDATA="$env:TEMP\oa-dev\local"`. Pour éviter le conflit de port, définis
+`OPENALTERNANCE_DESKTOP_PORT`.
 
 ## Où sont les données
 

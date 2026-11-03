@@ -356,14 +356,14 @@ describe("authRequired", () => {
   test("local without password is open", () => expect(authRequired({})).toBe(false));
 });
 
-// Own process: PASSWORD and VERCEL are read at import, and this file sets the password.
+// Own process: PASSWORD and VERCEL are read at import.
 const openScript = `
 if (!process.env.VERCEL) await (await import("./src/db")).migrate();
 const { handle } = await import("./src/api");
 const spawned = JSON.parse(process.env.SPAWN_REQ!) as { method: string; path: string; headers: Record<string, string> };
 const res = await handle(new Request("http://127.0.0.1:3000" + spawned.path, { method: spawned.method, headers: spawned.headers, body: spawned.method === "GET" ? undefined : "{}" }));
 console.log(JSON.stringify({ status: res.status, body: await res.text() }));`;
-// Vercel refuses sqlite at import: a Postgres URL is only a stub, nothing connects before the 500.
+// Postgres URL is a stub: Vercel 500s before any connection.
 const spawnApi = async (env: Record<string, string>, request = { method: "GET", path: "/api/state", headers: {} }) => {
   const base: Record<string, string | undefined> = { ...process.env, DATABASE_URL: "sqlite://:memory:", SPAWN_REQ: JSON.stringify(request) };
   delete base.OPENALTERNANCE_PASSWORD;

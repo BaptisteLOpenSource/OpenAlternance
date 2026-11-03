@@ -4,8 +4,9 @@ import { appendFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { win32 } from "node:path";
 import pkg from "../../package.json";
+import { pad } from "../logic";
 import { desktopPaths, resolveDatabaseUrl } from "./config";
-import { installUpdate, isNewer, latestRelease } from "./update";
+import { downloadUpdate, isNewer, latestRelease, runInstaller } from "./update";
 
 const PORT = Number(process.env.OPENALTERNANCE_DESKTOP_PORT ?? 3737);
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -55,7 +56,6 @@ let update: { version: string; url: string } | null = null;
 let last = Date.now();
 
 const json = (body: unknown, status = 200) => Response.json(body, { status });
-const pad = (n: number) => String(n).padStart(2, "0");
 
 function stamp(): string {
   const d = new Date();
@@ -76,8 +76,9 @@ async function desktopRoute(req: Request, path: string): Promise<Response> {
   if (req.method === "POST" && path === "/api/desktop/update") {
     if (!isTrustedRequest(req)) return json({ error: "Forbidden" }, 403);
     if (!update) return json({ error: "aucune mise à jour" }, 400);
-    // installUpdate exits the process: answer first, then run it.
-    installUpdate(update.url, tmpdir()).catch(log);
+    const file = await downloadUpdate(update.url, tmpdir());
+    // ponytail: fixed delay lets the reply flush; ack-based is exact.
+    setTimeout(() => runInstaller(file), 500);
     return json({ ok: true });
   }
   return json({ error: "Introuvable" }, 404);
@@ -96,7 +97,7 @@ function extra(req: Request, path: string): Promise<Response> | null {
 }
 
 const embedded = Bun.embeddedFiles as (Blob & { name: string })[];
-// Compiled blob names may carry a bundler hash: exact name first, then stem-hash.ext.
+// Bundler may hash blob names: exact name, then stem-hash.ext.
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 async function embeddedPublicFile(path: string): Promise<Response> {
   const name = path.slice(1);

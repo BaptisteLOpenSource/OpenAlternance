@@ -24,7 +24,7 @@ export function startServer(opts: {
     idleTimeout: 0,
     routes: { "/": index },
     fetch(req, server) {
-      // DNS rebinding: a hostile domain resolving to 127.0.0.1 sends its own Host.
+      // DNS rebinding: foreign domain on 127.0.0.1 sends its own Host.
       if (!allowedHosts.has(req.headers.get("host") ?? "")) return new Response("Forbidden", { status: 403 });
       const path = new URL(req.url).pathname;
       if (req.method === "GET" && PUBLIC_FILE.test(path)) return publicFile(path);

@@ -46,12 +46,16 @@ export async function latestRelease(fetchFn: typeof fetch = fetch): Promise<{ ve
   }
 }
 
-export async function installUpdate(url: string, tempDir: string): Promise<void> {
+export async function downloadUpdate(url: string, tempDir: string, fetchFn: typeof fetch = fetch): Promise<string> {
   if (!isReleaseUrl(url)) throw new Error("URL de mise à jour refusée");
   const file = win32.join(tempDir, SETUP);
-  const res = await fetch(new URL(url).href, { signal: AbortSignal.timeout(120_000) });
+  const res = await fetchFn(new URL(url).href, { signal: AbortSignal.timeout(120_000) });
   if (!res.ok) throw new Error(`Téléchargement de la mise à jour échoué (HTTP ${res.status})`);
   await Bun.write(file, res);
+  return file;
+}
+
+export function runInstaller(file: string): void {
   Bun.spawn([file, "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"], {
     stdin: "ignore",
     stdout: "ignore",

@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-// Own process: db.ts reads DATABASE_URL at import and must not touch a shared test DB.
+// Own process: db.ts reads DATABASE_URL at import, no shared test DB.
 const dir = mkdtempSync(join(tmpdir(), "oa-backup-"));
 const target = join(dir, "backup.db");
 

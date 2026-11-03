@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { installUpdate, isNewer, latestRelease } from "./update";
+import { downloadUpdate, isNewer, latestRelease } from "./update";
 
 const URL_OK = "https://github.com/BaptisteLOpenSource/OpenAlternance/releases/download/v0.2.0/OpenAlternance-Setup.exe";
 
@@ -38,8 +38,12 @@ test("latestRelease refuses a download url outside the project releases", async 
   expect(await latestRelease(fakeFetch(evil))).toBeNull();
 });
 
-test("installUpdate refuses a url outside the project releases", async () => {
-  await expect(installUpdate("https://evil.example/x.exe", "C:\\tmp")).rejects.toThrow("refusée");
+test("downloadUpdate refuses a url outside the project releases", async () => {
+  await expect(downloadUpdate("https://evil.example/x.exe", "C:\\tmp")).rejects.toThrow("refusée");
+});
+
+test("downloadUpdate rejects on HTTP error so the reply is an error", async () => {
+  await expect(downloadUpdate(URL_OK, "C:\\tmp", fakeFetch({ message: "boom" }, 500))).rejects.toThrow("HTTP 500");
 });
 
 test("dot-segment traversal and lookalike host are refused by both", async () => {
@@ -50,7 +54,7 @@ test("dot-segment traversal and lookalike host are refused by both", async () =>
   ];
   for (const url of bad) {
     expect(await latestRelease(fakeFetch({ tag_name: "v0.2.0", assets: [{ name: "OpenAlternance-Setup.exe", browser_download_url: url }] }))).toBeNull();
-    await expect(installUpdate(url, "C:\\tmp")).rejects.toThrow("refusée");
+    await expect(downloadUpdate(url, "C:\\tmp")).rejects.toThrow("refusée");
   }
 });
 

@@ -94,7 +94,6 @@ export function useStore() {
       })
       .catch((e) => (e instanceof Unauthorized ? setLocked(true) : setError(String(e.message))));
 
-  // No SSE: serverless cannot hold a stream. Refetch when the tab regains focus.
   // 404 outside the desktop process: stay null, no error shown.
   useEffect(() => {
     request<DesktopInfo>("/api/desktop/info")
@@ -102,6 +101,7 @@ export function useStore() {
       .catch(() => setDesktop(null));
   }, []);
 
+  // No SSE: serverless cannot hold a stream. Refetch on tab focus.
   useEffect(() => {
     load();
     addEventListener("focus", load);

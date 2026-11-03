@@ -1,7 +1,7 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 import { PROFIL_VIDE } from "../src/logic";
 
-// Desktop process: no login, extra /api/desktop/* routes. Mocked at the network edge like app.spec.ts.
+// Desktop: no login, /api/desktop/* routes. Mocked like app.spec.ts.
 type Info = { status: number; body: unknown };
 type Mock = { calls: { method: string; path: string }[] };
 
@@ -41,7 +41,7 @@ test("mise à jour : bannière visible, clic -> POST /api/desktop/update, télé
   await page.goto("/");
   await expect(page.getByText("Nouvelle version 1.1.0 disponible")).toBeVisible();
   await page.getByRole("button", { name: "Mettre à jour" }).click();
-  await expect(page.getByText("Téléchargement de la mise à jour…")).toBeVisible();
+  await expect(page.getByText("Téléchargement de la mise à jour...")).toBeVisible();
   expect(mock.calls.some((c) => c.method === "POST" && c.path === "/api/desktop/update")).toBe(true);
 });
 

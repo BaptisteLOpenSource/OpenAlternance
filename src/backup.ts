@@ -13,6 +13,7 @@ export async function backupToSqlite(target: string): Promise<{ rows: number }> 
   try {
     for (const statement of schema("sqlite")) await copy.unsafe(statement);
     for (const table of TABLES) {
+      // ponytail: row-by-row insert, batch if DB grows
       for (const row of await sql.unsafe(`SELECT * FROM ${table}`)) {
         await copy`INSERT INTO ${copy(table)} ${copy(row)}`;
         rows++;
@@ -20,7 +21,7 @@ export async function backupToSqlite(target: string): Promise<{ rows: number }> 
     }
   } catch (error) {
     // A half-filled file would pass for a valid backup.
-    await copy.close();
+    await copy.close().catch(() => {});
     rmSync(target, { force: true });
     throw error;
   }

@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://openalternance.baptisteledev.fr/sitemap-index.xml

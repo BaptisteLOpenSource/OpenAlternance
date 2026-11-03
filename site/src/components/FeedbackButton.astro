@@ -1,0 +1,18 @@
+---
+interface Props {
+	pageTitle: string;
+}
+
+const { pageTitle } = Astro.props;
+const href = `https://github.com/BaptisteLOpenSource/OpenAlternance/issues/new?template=feature.yml&title=${encodeURIComponent(pageTitle)}`;
+---
+
+<a class="feedback" href={href} target="_blank" rel="noopener">Signaler un problème ou proposer une amélioration</a>
+
+<style>
+	.feedback {
+		display: inline-block;
+		margin-top: 1rem;
+		font-weight: 600;
+	}
+</style>

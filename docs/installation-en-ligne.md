@@ -1,3 +1,8 @@
+---
+title: Installation en ligne
+description: Déployer OpenAlternance sur Vercel avec une base Postgres Neon.
+---
+
 # Installation en ligne (Vercel + Neon)
 
 Mode Postgres : la base est chez Neon, l'application chez Vercel.

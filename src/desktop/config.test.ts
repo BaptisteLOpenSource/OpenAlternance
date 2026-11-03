@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { desktopPaths, protect, resolveDatabaseUrl, unprotect } from "./config";
@@ -34,7 +34,14 @@ test.skipIf(process.platform !== "win32")("plaintext databaseUrl is protected an
   expect(saved.databaseUrl).toBeUndefined();
   expect(saved.mode).toBe("online");
   expect(await unprotect(saved.databaseUrlProtected)).toBe(url);
+  expect(existsSync(`${paths.config}.tmp`)).toBe(false);
   expect(await resolveDatabaseUrl(paths)).toBe(url);
+});
+
+test("malformed config throws without echoing content", async () => {
+  const { paths } = tempEnv();
+  await Bun.write(paths.config, "{not json");
+  await expect(resolveDatabaseUrl(paths)).rejects.toThrow(/Configuration illisible/);
 });
 
 test("missing config means local sqlite, no file created", async () => {

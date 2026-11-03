@@ -1,9 +1,10 @@
+import { renameSync } from "node:fs";
 import { win32 } from "node:path";
 
 export type DesktopConfig = { mode: "local" | "online"; databaseUrl?: string; databaseUrlProtected?: string };
 export type DesktopPaths = { config: string; data: string; db: string; backups: string; log: string };
 
-// win32.join: backslashes whatever the host OS, the desktop app only runs on Windows.
+// win32.join: backslashes on any host, app is Windows-only.
 export function desktopPaths(env: Record<string, string | undefined>): DesktopPaths {
   const config = win32.join(env.APPDATA ?? "", "OpenAlternance", "config.json");
   const data = win32.join(env.LOCALAPPDATA ?? "", "OpenAlternance");
@@ -47,7 +48,13 @@ export function unprotect(blob: string): Promise<string> {
 
 async function readConfig(path: string): Promise<DesktopConfig | null> {
   const file = Bun.file(path);
-  return (await file.exists()) ? ((await file.json()) as DesktopConfig) : null;
+  if (!(await file.exists())) return null;
+  try {
+    return (await file.json()) as DesktopConfig;
+  } catch {
+    // Never echo file content: it may hold the plaintext Neon URL.
+    throw new Error("Configuration illisible : relance l'installeur (voir guide)");
+  }
 }
 
 export async function resolveDatabaseUrl(paths: DesktopPaths): Promise<string> {
@@ -57,7 +64,9 @@ export async function resolveDatabaseUrl(paths: DesktopPaths): Promise<string> {
   if (cfg.databaseUrl) {
     const url = cfg.databaseUrl;
     const { databaseUrl: _plain, ...rest } = cfg;
-    await Bun.write(paths.config, JSON.stringify({ ...rest, databaseUrlProtected: await protect(url) }, null, 2));
+    const tmp = `${paths.config}.tmp`;
+    await Bun.write(tmp, JSON.stringify({ ...rest, databaseUrlProtected: await protect(url) }, null, 2));
+    renameSync(tmp, paths.config);
     return url;
   }
   if (cfg.databaseUrlProtected) return unprotect(cfg.databaseUrlProtected);

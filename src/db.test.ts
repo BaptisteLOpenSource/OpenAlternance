@@ -41,7 +41,7 @@ test("import de db sur Vercel sans Postgres échoue avant tout accès disque", a
   expect(await new Response(p.stderr).text()).toMatch(/SQLite impossible sur Vercel/);
 });
 
-test("sqlite file is private to the owner", async () => {
+test.skipIf(process.platform === "win32")("sqlite file is private to the owner", async () => {
   const dir = mkdtempSync(join(tmpdir(), "oa-"));
   const file = join(dir, "nested", "x.db");
   const p = Bun.spawn(["bun", "-e", 'const { migrate } = await import("./src/db"); await migrate();'], {

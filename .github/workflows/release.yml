@@ -33,19 +33,21 @@ jobs:
       - name: Build exe
         run: bun run build:desktop
       - name: Inno Setup
+        env:
+          MSYS_NO_PATHCONV: "1"
         run: |
           ISCC="/c/Program Files (x86)/Inno Setup 6/ISCC.exe"
           if [ ! -f "$ISCC" ]; then choco install innosetup -y --no-progress; fi
           "$ISCC" "/DAppVersion=$(node -p "require('./package.json').version")" installer/openalternance.iss
       - name: Upload setup (dry run)
-        if: ${{ !(github.ref_type == 'tag' && !inputs.dry_run) }}
+        if: ${{ !(github.event_name == 'push' && !inputs.dry_run) }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: OpenAlternance-Setup
           path: installer/Output/OpenAlternance-Setup.exe
           if-no-files-found: error
       - name: Publish release
-        if: ${{ github.ref_type == 'tag' && !inputs.dry_run }}
+        if: ${{ github.event_name == 'push' && !inputs.dry_run }}
         run: gh release create "$GITHUB_REF_NAME" installer/Output/OpenAlternance-Setup.exe --generate-notes
         env:
           GH_TOKEN: ${{ github.token }}

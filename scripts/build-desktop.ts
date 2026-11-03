@@ -2,7 +2,7 @@ import { mkdirSync, readdirSync, rmSync } from "node:fs";
 import type { BunPlugin } from "bun";
 import tailwind from "bun-plugin-tailwind";
 
-// A .js entrypoint is bundled as code, not embedded as a file: sw.js must be a file blob.
+// sw.js must be a file blob: a .js entrypoint is bundled as code.
 const publicJsAsFile: BunPlugin = {
   name: "public-js-as-file",
   setup(build) {
@@ -13,8 +13,7 @@ const publicJsAsFile: BunPlugin = {
   },
 };
 
-// Public files are entrypoints so they get embedded under their exact names
-// (served by embeddedPublicFile in src/desktop/main.ts).
+// Exact names: embeddedPublicFile (desktop/main.ts) matches them.
 const out = "dist-desktop";
 rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });

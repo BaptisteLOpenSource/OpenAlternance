@@ -64,7 +64,7 @@ begin
   StringChange(Result, '"', '\"');
 end;
 
-// App writes JSON.stringify(..., null, 2), so "mode": "online" has a space.
+// App writes indented JSON: "mode": "online" has a space.
 function IsOnlineConfig: Boolean;
 var
   Text: AnsiString;

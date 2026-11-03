@@ -135,9 +135,11 @@ try {
 }
 
 console.log(`desktop: ${BASE}`);
-latestRelease().then((latest) => {
-  update = latest && isNewer(latest.version, pkg.version) ? latest : null;
-});
+if (!process.env.OPENALTERNANCE_NO_UPDATE_CHECK) {
+  latestRelease().then((latest) => {
+    update = latest && isNewer(latest.version, pkg.version) ? latest : null;
+  });
+}
 // ponytail: idle exit only; tray icon would keep it alive.
 setInterval(() => {
   if (Date.now() - last > IDLE_MS) process.exit(0);

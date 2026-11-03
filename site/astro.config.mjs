@@ -2,8 +2,7 @@ import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 
 export default defineConfig({
-	site: 'https://baptistelopensource.github.io',
-	base: '/OpenAlternance',
+	site: 'https://openalternance.baptisteledev.fr',
 	integrations: [
 		starlight({
 			title: 'OpenAlternance',

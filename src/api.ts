@@ -1,4 +1,4 @@
-import { SESSION_DAYS, clearSessionCookie, newSessionToken, passwordMatches, sessionCookie, sessionTokenFrom } from "./auth";
+import { SESSION_DAYS, clearSessionCookie, digest, newSessionToken, passwordMatches, sessionCookie, sessionTokenFrom } from "./auth";
 import { sql } from "./db";
 import { FICHE_TEXTES, LETTRE_STATUTS, MAIL_CANAUX, NOM_FICHIER_DEFAUT, STATUTS, SUIVIS, TYPES, delaiDays, documentFile, isoAgo, isoDate, oneOf, stripFrontmatter, today } from "./logic";
 import { MAX_PDF_BASE64, pdfToHtml, renderDocument } from "./documents";
@@ -15,11 +15,19 @@ export function passwordProblem(password: string): string | null {
   return null;
 }
 
+// Local without a password is open; Vercel always requires one.
+export function authRequired(env: Record<string, string | undefined>): boolean {
+  return Boolean(env.VERCEL || env.OPENALTERNANCE_PASSWORD);
+}
+
+// Changing the password changes the key: every session issued under the old one stops matching.
+const sessionKey = (cookieToken: string): string => `${digest(PASSWORD).toString("hex").slice(0, 16)}.${cookieToken}`;
+
 const json = (body: unknown, status = 200, headers?: HeadersInit) => Response.json(body, { status, headers });
 const notFound = () => json({ error: "Introuvable" }, 404);
 
 // Writes must come from the served origin (SameSite=Strict alone misses some cases). GET is read-only.
-function isTrustedRequest(req: Request): boolean {
+export function isTrustedRequest(req: Request): boolean {
   return req.method === "GET" || req.headers.get("origin") === new URL(req.url).origin;
 }
 
@@ -31,7 +39,7 @@ const clientIp = (req: Request, peer?: string): string =>
 async function isAuthenticated(req: Request): Promise<boolean> {
   const token = sessionTokenFrom(req);
   if (!token) return false;
-  const [session] = await sql`SELECT 1 AS ok FROM sessions WHERE token = ${token} AND created_at > ${isoAgo(new Date(), SESSION_DAYS * 86_400_000)}`;
+  const [session] = await sql`SELECT 1 AS ok FROM sessions WHERE token = ${sessionKey(token)} AND created_at > ${isoAgo(new Date(), SESSION_DAYS * 86_400_000)}`;
   return session !== undefined;
 }
 
@@ -141,6 +149,7 @@ const ACTIONS: Record<string, (required: Field, optional: (name: string) => stri
 };
 
 async function login(req: Request, peer?: string): Promise<Response> {
+  if (!authRequired(process.env)) return json({ ok: true });
   const ip = clientIp(req, peer);
   const cutoff = isoAgo(new Date(), 15 * 60_000);
   // Record first, then count: concurrent guesses cannot all slip under the limit.
@@ -154,14 +163,14 @@ async function login(req: Request, peer?: string): Promise<Response> {
   await sql`DELETE FROM login_attempts WHERE ip = ${ip}`;
   const token = newSessionToken();
   await sql`DELETE FROM sessions WHERE created_at < ${isoAgo(new Date(), SESSION_DAYS * 86_400_000)}`;
-  await sql`INSERT INTO sessions (token, created_at) VALUES (${token}, ${new Date().toISOString()})`;
+  await sql`INSERT INTO sessions (token, created_at) VALUES (${sessionKey(token)}, ${new Date().toISOString()})`;
   const secure = new URL(req.url).protocol === "https:";
   return json({ ok: true }, 200, { "set-cookie": sessionCookie(token, secure) });
 }
 
 // Deleting the row is what revokes the session: a copied cookie stops working at once.
 async function logout(req: Request): Promise<Response> {
-  await sql`DELETE FROM sessions WHERE token = ${sessionTokenFrom(req)}`;
+  await sql`DELETE FROM sessions WHERE token = ${sessionKey(sessionTokenFrom(req))}`;
   return json({ ok: true }, 200, { "set-cookie": clearSessionCookie() });
 }
 
@@ -231,12 +240,16 @@ export async function handle(req: Request, peer?: string): Promise<Response> {
 async function route(req: Request, peer?: string): Promise<Response> {
   const path = new URL(req.url).pathname;
   if (!path.startsWith("/api/")) return notFound();
-  const weak = passwordProblem(PASSWORD);
-  if (weak) return json({ error: weak }, 500);
+  const required = authRequired(process.env);
+  if (required) {
+    const weak = passwordProblem(PASSWORD);
+    if (weak) return json({ error: weak }, 500);
+  }
   if (!isTrustedRequest(req)) return json({ error: "Forbidden" }, 403);
   if (req.method === "POST" && path === "/api/login") return login(req, peer);
   if (req.method === "POST" && path === "/api/logout") return logout(req);
-  if (!(await isAuthenticated(req))) return json({ error: "Connexion requise" }, 401);
+  // ponytail: open locally; any user of a shared Windows PC can read.
+  if (required && !(await isAuthenticated(req))) return json({ error: "Connexion requise" }, 401);
   if (req.method === "GET") return handleGet(path);
   if (req.method === "POST") return handlePost(req, path);
   return notFound();

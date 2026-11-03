@@ -8,7 +8,7 @@ const DB = process.env.TEST_DATABASE_URL ?? "sqlite://:memory:";
 if (DB === process.env.DATABASE_URL) throw new Error("TEST_DATABASE_URL = DATABASE_URL: refuse de tester sur la prod");
 process.env.DATABASE_URL = DB;
 process.env.OPENALTERNANCE_PASSWORD = "mot-de-passe-de-test-ok";
-const { handle, passwordProblem } = await import("./api");
+const { handle, passwordProblem, authRequired } = await import("./api");
 const ORIGIN = "http://127.0.0.1:3000";
 const req = (path: string, init: RequestInit & { origin?: string } = {}) =>
   handle(
@@ -134,6 +134,12 @@ describe("base de test (TEST_DATABASE_URL)", () => {
     const setCookie = ok.headers.get("set-cookie")!;
     expect(setCookie).toContain("HttpOnly");
     expect(setCookie).toContain("SameSite=Strict");
+  });
+
+  test("session liée à un ancien mot de passe -> 401", async () => {
+    await sql`INSERT INTO sessions (token, created_at) VALUES (${"0000000000000000.ancien"}, ${new Date().toISOString()})`;
+    const res = await auth("/api/state", { headers: { cookie: "openalternance=ancien" } });
+    expect(res.status).toBe(401);
   });
 
   test("le mot de passe n'apparaît jamais dans la réponse", async () => {
@@ -330,4 +336,38 @@ describe("base de test (TEST_DATABASE_URL)", () => {
     const res = await auth("/api/entreprise-supprimer", { method: "POST", body: JSON.stringify({ entreprise: "TEST-inconnue" }) });
     expect(res.status).toBe(400);
   });
+});
+
+describe("authRequired", () => {
+  test("vercel always requires", () => expect(authRequired({ VERCEL: "1" })).toBe(true));
+  test("local with password requires", () => expect(authRequired({ OPENALTERNANCE_PASSWORD: "x".repeat(16) })).toBe(true));
+  test("local without password is open", () => expect(authRequired({})).toBe(false));
+});
+
+// Own process: PASSWORD and VERCEL are read at import, and this file sets the password.
+const openScript = `
+if (!process.env.VERCEL) await (await import("./src/db")).migrate();
+const { handle } = await import("./src/api");
+const res = await handle(new Request("http://127.0.0.1:3000/api/state"));
+console.log(JSON.stringify({ status: res.status, body: await res.text() }));`;
+// Vercel refuses sqlite at import: a Postgres URL is only a stub, nothing connects before the 500.
+const spawnApi = async (env: Record<string, string>) => {
+  const base: Record<string, string | undefined> = { ...process.env, DATABASE_URL: "sqlite://:memory:" };
+  delete base.OPENALTERNANCE_PASSWORD;
+  delete base.VERCEL;
+  const p = Bun.spawn(["bun", "-e", openScript], { cwd: join(import.meta.dir, ".."), env: { ...base, ...env }, stdout: "pipe", stderr: "pipe" });
+  const out = JSON.parse(await new Response(p.stdout).text()) as { status: number; body: string };
+  await p.exited;
+  return out;
+};
+
+test("sans mot de passe en local: API ouverte sans cookie", async () => {
+  const out = await spawnApi({});
+  expect(out.status).toBe(200);
+});
+
+test("VERCEL sans mot de passe: 500 non configuré", async () => {
+  const out = await spawnApi({ VERCEL: "1", DATABASE_URL: "postgresql://u:p@127.0.0.1:1/x" });
+  expect(out.status).toBe(500);
+  expect(out.body).toContain("non configuré");
 });

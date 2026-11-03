@@ -12,6 +12,8 @@ const BASE = `http://127.0.0.1:${PORT}`;
 const GUIDE = "https://openalternance.baptisteledev.fr/installation-desktop/";
 const IDLE_MS = 60 * 60_000;
 const MEMORY_DB = "sqlite://:memory:";
+const DB_UNREACHABLE =
+  "Base de données injoignable : vérifie ta connexion internet ou ta clé Neon";
 
 const paths = desktopPaths(process.env);
 // api.ts reads these at import: auth and Vercel mode must stay off.
@@ -38,8 +40,9 @@ if (!startupError) {
   try {
     await db.migrate();
   } catch (error) {
+    // Driver text may carry the Neon host: keep it in the log only.
     log(error);
-    startupError = error instanceof Error ? error.message : String(error);
+    startupError = DB_UNREACHABLE;
   }
 }
 
@@ -73,7 +76,8 @@ async function desktopRoute(req: Request, path: string): Promise<Response> {
   if (req.method === "POST" && path === "/api/desktop/update") {
     if (!isTrustedRequest(req)) return json({ error: "Forbidden" }, 403);
     if (!update) return json({ error: "aucune mise à jour" }, 400);
-    await installUpdate(update.url, tmpdir());
+    // installUpdate exits the process: answer first, then run it.
+    installUpdate(update.url, tmpdir()).catch(log);
     return json({ ok: true });
   }
   return json({ error: "Introuvable" }, 404);
@@ -92,12 +96,13 @@ function extra(req: Request, path: string): Promise<Response> | null {
 }
 
 const embedded = Bun.embeddedFiles as (Blob & { name: string })[];
-// Compiled blob names may carry a bundler hash: match stem + ext.
+// Compiled blob names may carry a bundler hash: exact name first, then stem-hash.ext.
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 async function embeddedPublicFile(path: string): Promise<Response> {
   const name = path.slice(1);
   const stem = name.replace(/\.\w+$/, "");
-  const ext = name.slice(stem.length);
-  const blob = embedded.find((b) => b.name === name || (b.name.startsWith(stem) && b.name.endsWith(ext)));
+  const hashed = new RegExp(`^${escapeRe(stem)}(-\\w+)?${escapeRe(name.slice(stem.length))}$`);
+  const blob = embedded.find((b) => b.name === name) ?? embedded.find((b) => hashed.test(b.name));
   return blob ? new Response(blob) : json({ error: "Introuvable" }, 404);
 }
 

@@ -77,6 +77,14 @@ test("backup refused in local mode", async () => {
   });
 }, 30_000);
 
+test("update without a known release answers 400", async () => {
+  await withApp(3746, null, async (base) => {
+    const res = await fetch(`${base}/api/desktop/update`, { method: "POST", headers: { origin: base } });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "aucune mise à jour" });
+  });
+}, 30_000);
+
 test("online without url answers 503 guide on every api route", async () => {
   await withApp(3744, { mode: "online" }, async (base) => {
     const res = await fetch(`${base}/api/state`);

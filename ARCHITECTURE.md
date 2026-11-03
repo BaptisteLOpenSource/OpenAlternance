@@ -23,4 +23,7 @@ jamais avec l'horloge de la base.
 
 ## Authentification
 
-Mot de passe unique (`OPENALTERNANCE_PASSWORD`), sessions en table, identiques dans les deux modes.
+Mot de passe unique (`OPENALTERNANCE_PASSWORD`), sessions en table. Obligatoire sur Vercel. Facultatif en local :
+le serveur web ne demande rien sans la variable, l'app desktop retire la variable et ne demande rien
+(`src/desktop/main.ts`). Les requêtes locales passent sans mot de passe via `isTrustedRequest` (`src/api.ts`),
+qui exige une `Origin` identique pour les écritures. Voir [ADR 0002](docs/decisions/0002-desktop-bun-compile-inno.md).

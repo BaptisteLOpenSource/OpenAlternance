@@ -38,7 +38,7 @@ const STATUT_BY_TYPE: Partial<Record<InteractionType, Statut>> = {
   depot: "contacte",
 };
 
-const pad = (n: number) => String(n).padStart(2, "0");
+export const pad = (n: number) => String(n).padStart(2, "0");
 
 export function toIso(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;

@@ -1,0 +1,57 @@
+name: release
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with: { persist-credentials: false }
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - run: bun install --frozen-lockfile
+      - name: Version matches tag
+        if: github.ref_type == 'tag'
+        run: |
+          pkg=$(node -p "require('./package.json').version")
+          test "${GITHUB_REF_NAME#v}" = "$pkg" || { echo "tag $GITHUB_REF_NAME != package.json $pkg"; exit 1; }
+      - name: Test
+        run: bun test src
+      - name: Build exe
+        run: bun run build:desktop
+      - name: Inno Setup
+        env:
+          MSYS_NO_PATHCONV: "1"
+        run: |
+          ISCC="/c/Program Files (x86)/Inno Setup 6/ISCC.exe"
+          if [ ! -f "$ISCC" ]; then choco install innosetup -y --no-progress; fi
+          "$ISCC" "/DAppVersion=$(node -p "require('./package.json').version")" installer/openalternance.iss
+      - name: Upload setup
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: OpenAlternance-Setup
+          path: installer/Output/OpenAlternance-Setup.exe
+          if-no-files-found: error
+  publish:
+    if: github.event_name == 'push'
+    needs: windows
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Download setup
+        run: gh run download "$GITHUB_RUN_ID" -n OpenAlternance-Setup -D dist
+      - name: Publish release
+        run: gh release create "$GITHUB_REF_NAME" dist/OpenAlternance-Setup.exe --generate-notes

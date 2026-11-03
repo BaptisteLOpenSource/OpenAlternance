@@ -2,6 +2,8 @@
 
 Merci de vouloir contribuer. Le dépôt n'accepte pas de push direct : tout passe par un fork et une pull request vers `dev`.
 
+Mise en place locale (clone, serveur web, app bureau, tests) : [docs/installation-dev.md](docs/installation-dev.md).
+
 ## Avant de coder
 
 - Un bug ou une idée ? Ouvre une [issue](https://github.com/BaptisteLOpenSource/OpenAlternance/issues/new/choose) avec le formulaire adapté.

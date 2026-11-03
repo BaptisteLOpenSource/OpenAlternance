@@ -1,0 +1,15 @@
+:root {
+	--oa-font: 'Geist', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+	--oa-bg: #07070a;
+	--oa-surface: #111118;
+	--oa-line: rgb(255 255 255 / 0.09);
+	--oa-text: #f4f4f6;
+	--oa-muted: #a1a1b0;
+	--oa-violet: #7c3aed;
+	--oa-violet-soft: #c4b5fd;
+	--oa-radius: 1.25rem;
+	--oa-radius-lg: 2rem;
+	--oa-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.07'/%3E%3C/svg%3E");
+	--oa-glow: radial-gradient(60rem 40rem at 85% -10%, rgb(124 58 237 / 0.28), transparent 60%),
+		radial-gradient(40rem 30rem at -10% 30%, rgb(76 29 149 / 0.22), transparent 60%);
+}

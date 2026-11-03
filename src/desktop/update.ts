@@ -1,13 +1,23 @@
 import { win32 } from "node:path";
 
 const RELEASES_API = "https://api.github.com/repos/BaptisteLOpenSource/OpenAlternance/releases/latest";
-// Only this prefix may ever be downloaded and run as an installer.
-const RELEASE_PREFIX ="https://github.com/BaptisteLOpenSource/OpenAlternance/releases/download/";
+const RELEASE_PATH = "/BaptisteLOpenSource/OpenAlternance/releases/download/";
 const SETUP = "OpenAlternance-Setup.exe";
 
+// startsWith alone is bypassed by ../ segments: parse first.
+function isReleaseUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return u.origin === "https://github.com" && u.pathname.startsWith(RELEASE_PATH);
+  } catch {
+    return false;
+  }
+}
+
 export function isNewer(latest: string, current: string): boolean {
-  const a = latest.replace(/^v/, "").split(".").map(Number);
-  const b = current.replace(/^v/, "").split(".").map(Number);
+  const parts = (v: string) => v.replace(/^v/, "").split(".").map((p) => Number(p.replace(/-.*$/, "")));
+  const a = parts(latest);
+  const b = parts(current);
   for (let i = 0; i < 3; i++) {
     const d = (a[i] ?? 0) - (b[i] ?? 0);
     if (d !== 0) return d > 0;
@@ -29,19 +39,23 @@ export async function latestRelease(fetchFn: typeof fetch = fetch): Promise<{ ve
       | { browser_download_url?: unknown }
       | undefined;
     const url = asset?.browser_download_url;
-    if (typeof url !== "string" || !url.startsWith(RELEASE_PREFIX)) return null;
-    return { version: body.tag_name, url };
+    if (typeof url !== "string" || !isReleaseUrl(url)) return null;
+    return { version: body.tag_name, url: new URL(url).href };
   } catch {
     return null;
   }
 }
 
 export async function installUpdate(url: string, tempDir: string): Promise<void> {
-  if (!url.startsWith(RELEASE_PREFIX)) throw new Error("URL de mise à jour refusée");
+  if (!isReleaseUrl(url)) throw new Error("URL de mise à jour refusée");
   const file = win32.join(tempDir, SETUP);
-  const res = await fetch(url);
+  const res = await fetch(new URL(url).href, { signal: AbortSignal.timeout(120_000) });
   if (!res.ok) throw new Error(`Téléchargement de la mise à jour échoué (HTTP ${res.status})`);
   await Bun.write(file, res);
-  Bun.spawn([file, "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"], { stdio: ["ignore", "ignore", "ignore"] }).unref();
+  Bun.spawn([file, "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"], {
+    stdin: "ignore",
+    stdout: "ignore",
+    stderr: "ignore",
+  }).unref();
   process.exit(0);
 }

@@ -41,3 +41,19 @@ test("latestRelease refuses a download url outside the project releases", async 
 test("installUpdate refuses a url outside the project releases", async () => {
   await expect(installUpdate("https://evil.example/x.exe", "C:\\tmp")).rejects.toThrow("refusée");
 });
+
+test("dot-segment traversal and lookalike host are refused by both", async () => {
+  const bad = [
+    "https://github.com/BaptisteLOpenSource/OpenAlternance/releases/download/../../../../attacker/repo/raw/main/x.exe",
+    "https://github.com.evil.example/BaptisteLOpenSource/OpenAlternance/releases/download/v0.2.0/OpenAlternance-Setup.exe",
+  ];
+  for (const url of bad) {
+    expect(await latestRelease(fakeFetch({ tag_name: "v0.2.0", assets: [{ name: "OpenAlternance-Setup.exe", browser_download_url: url }] }))).toBeNull();
+    await expect(installUpdate(url, "C:\\tmp")).rejects.toThrow("refusée");
+  }
+});
+
+test("isNewer ignores prerelease suffix instead of NaN", () => {
+  expect(isNewer("0.1.1-beta", "0.1.0")).toBe(true);
+  expect(isNewer("0.1.1-beta", "0.1.1")).toBe(false);
+});

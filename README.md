@@ -45,7 +45,7 @@
 
 ## Démarrage rapide (développeur)
 
-Utilisateur Windows ? Télécharge `OpenAlternance-Setup.exe` depuis les [versions](https://github.com/BaptisteLOpenSource/OpenAlternance/releases/latest)
+Utilisateur Windows ? Télécharge [`OpenAlternance-Setup.exe`](https://github.com/BaptisteLOpenSource/OpenAlternance/releases/latest/download/OpenAlternance-Setup.exe)
 et suis le [guide desktop](docs/installation-desktop.md). Pour le développement, depuis le code :
 
 ```bash

@@ -17,7 +17,8 @@ Récupère `OpenAlternance-Setup.exe` sur la page des
 
 1. Lance `OpenAlternance-Setup.exe`.
 2. Windows affiche « Windows a protégé votre ordinateur » (SmartScreen) : clique sur **Informations complémentaires**,
-   puis **Exécuter quand même**.3. Suis l'assistant. L'installation se fait pour ton compte seul, sans droits administrateur, dans
+   puis **Exécuter quand même**.
+3. Suis l'assistant. L'installation se fait pour ton compte seul, sans droits administrateur, dans
    `%LOCALAPPDATA%\Programs\OpenAlternance`.
 4. Choisis le mode de stockage (voir ci-dessous). Une icône est créée dans le menu Démarrer ; l'app s'ouvre à la fin.
 
@@ -34,7 +35,8 @@ Le lien « Où trouver ma clé ? » ouvre le guide.
 ## Où sont les données
 
 - Configuration : `%APPDATA%\OpenAlternance\config.json`.
-  En mode en ligne, l'URL Neon y est chiffrée (DPAPI, liée à ton compte Windows) ; elle n'est jamais écrite en clair.
+  En mode en ligne, l'installeur écrit d'abord l'URL Neon en clair. Au premier démarrage de l'app, elle est chiffrée
+  (DPAPI, liée à ton compte Windows) et la version en clair est supprimée du fichier.
 - Base locale, sauvegardes et journal : `%LOCALAPPDATA%\OpenAlternance\` (`openalternance.db`, dossier `backups\`,
   `openalternance.log`).
 
@@ -48,7 +50,7 @@ Si la vérification échoue (pas de connexion), l'app démarre normalement sans 
 
 ## Sauvegarder (mode en ligne)
 
-Le bouton **Sauvegarder** copie la base Neon dans un fichier SQLite local :
+Sur la page **Compte**, carte **Mon compte**, le bouton **Sauvegarder sur ce PC** copie la base Neon dans un fichier SQLite local :
 `%LOCALAPPDATA%\OpenAlternance\backups\openalternance-AAAA-MM-JJ-HHMM.db`.
 Le bouton n'apparaît qu'en mode en ligne ; en mode local, copie simplement `openalternance.db`.
 

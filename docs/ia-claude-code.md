@@ -38,11 +38,12 @@ Ne commite jamais .env.
 Déploie OpenAlternance sur Vercel avec une base Postgres Neon.
 Dépôt : https://github.com/BaptisteLOpenSource/OpenAlternance
 Guide : https://openalternance.baptisteledev.fr/installation-en-ligne/
-Étapes :
+Étapes (même ordre que le guide) :
 1. Neon : créer un projet région eu-central, récupérer la chaîne de connexion poolée (hôte -pooler).
-2. Vercel : importer le dépôt (ou vercel link), définir DATABASE_URL (chaîne Neon) et
+2. Poste Windows : installer OpenAlternance-Setup.exe, mode « En ligne avec Neon », coller la chaîne.
+   Le premier démarrage crée le schéma (pas de bun run setup).
+3. Vercel : importer le dépôt, définir DATABASE_URL (même chaîne Neon) et
    OPENALTERNANCE_PASSWORD (24 caractères aléatoires) en production.
-3. Initialiser la base depuis mon poste : DATABASE_URL='<chaîne neon>' bun run setup.
 4. Déployer en production et me donner l'URL.
 Demande-moi avant toute action payante ou sur un compte. N'écris aucun secret dans le dépôt.
 ```

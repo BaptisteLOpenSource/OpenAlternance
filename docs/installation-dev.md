@@ -82,8 +82,8 @@ Voir [ADR 0002](https://github.com/BaptisteLOpenSource/OpenAlternance/blob/dev/d
 
 ## Sécurité
 
-Le serveur écoute sur `127.0.0.1` uniquement. Le mot de passe reste demandé dès qu'il est configuré : 10 échecs en 15 minutes
-bloquent l'IP, les sessions durent 30 jours.
+Le serveur écoute sur `127.0.0.1` uniquement. Limite de débit, sessions et mot de passe : voir la
+[liste de contrôle sécurité](/installation-en-ligne/#liste-de-contrôle-sécurité).
 
 Ne l'expose jamais sur `0.0.0.0` ni derrière un reverse proxy : la limite de débit se base sur l'adresse
 du socket et le serveur refuse tout en-tête `Host` autre que `127.0.0.1:<port>` ou `localhost:<port>`.

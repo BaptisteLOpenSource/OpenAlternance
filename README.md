@@ -28,7 +28,7 @@
 ## Sommaire
 
 - [Choisir son mode](#choisir-son-mode)
-- [Démarrage rapide](#démarrage-rapide-local)
+- [Démarrage rapide](#démarrage-rapide-développeur)
 - [Fonctionnalités](#fonctionnalités)
 - [Documentation](#documentation)
 - [Contribuer](#contribuer)
@@ -43,10 +43,10 @@
 | Coût | aucun | offres gratuites Vercel et Neon suffisantes | aucun |
 | Guide | [installation desktop](docs/installation-desktop.md) | [installation en ligne](docs/installation-en-ligne.md) | [installation développeur](docs/installation-dev.md) |
 
-## Démarrage rapide (Windows)
+## Démarrage rapide (développeur)
 
-Télécharge `OpenAlternance-Setup.exe` depuis les [versions](https://github.com/BaptisteLOpenSource/OpenAlternance/releases/latest)
-et suis le [guide desktop](docs/installation-desktop.md). Sans installation, pour le développement :
+Utilisateur Windows ? Télécharge `OpenAlternance-Setup.exe` depuis les [versions](https://github.com/BaptisteLOpenSource/OpenAlternance/releases/latest)
+et suis le [guide desktop](docs/installation-desktop.md). Pour le développement, depuis le code :
 
 ```bash
 bun install

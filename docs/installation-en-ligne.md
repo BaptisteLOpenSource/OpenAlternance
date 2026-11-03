@@ -22,7 +22,7 @@ TLS est forcé par l'application, quel que soit le `sslmode` de l'URL.
 ## Installer l'app desktop
 
 Suis [Installation desktop](/installation-desktop/) et choisis **En ligne avec Neon**, en collant la chaîne poolée.
-Le premier démarrage crée le schéma et ajoute les exemples si la base est vide. Aucune ligne de commande n'est nécessaire.
+Le premier démarrage crée le schéma. La base démarre vide : les exemples ne sont pas ajoutés. Aucune ligne de commande n'est nécessaire.
 
 Les mises à jour de schéma suivantes se font aussi au démarrage de l'app.
 

@@ -368,7 +368,7 @@ const spawnApi = async (env: Record<string, string>, request = { method: "GET", 
   const base: Record<string, string | undefined> = { ...process.env, DATABASE_URL: "sqlite://:memory:", SPAWN_REQ: JSON.stringify(request) };
   delete base.OPENALTERNANCE_PASSWORD;
   delete base.VERCEL;
-  const p = Bun.spawn(["bun", "-e", openScript], { cwd: join(import.meta.dir, ".."), env: { ...base, ...env }, stdout: "pipe", stderr: "pipe" });
+  const p = Bun.spawn(["bun", "--no-env-file", "-e", openScript], { cwd: join(import.meta.dir, ".."), env: { ...base, ...env }, stdout: "pipe", stderr: "pipe" });
   const out = JSON.parse(await new Response(p.stdout).text()) as { status: number; body: string };
   await p.exited;
   return out;

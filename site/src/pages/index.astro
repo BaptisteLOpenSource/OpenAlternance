@@ -4,8 +4,7 @@ import logo from '../assets/logo.svg';
 
 const github = 'https://github.com/BaptisteLOpenSource/OpenAlternance';
 const author = 'https://baptisteledev.fr';
-const releases = `${github}/releases`;
-const setup = `${releases}/latest/download/OpenAlternance-Setup.exe`;
+const setup = `${github}/releases/latest/download/OpenAlternance-Setup.exe`;
 const features = [
 	{ title: 'Entreprises & relances', text: 'Note chaque entreprise contactée et ne rate plus aucune relance.' },
 	{ title: 'Lettres', text: 'Rédige tes lettres de motivation et garde-les à côté de chaque candidature.' },
@@ -64,7 +63,6 @@ const workflow = [
 						<a class="pill pill-light" href={setup}>Télécharger pour Windows</a>
 						<a class="link" href="/installation-desktop/">Guide d'installation</a>
 					</div>
-					<a class="link versions" href={releases}>Choisir une autre version</a>
 				</div>
 
 				<figure class="window">
@@ -112,7 +110,6 @@ const workflow = [
 					<h2>Prêt à suivre tes candidatures ?</h2>
 					<p>Installe OpenAlternance en quelques minutes, sans compte ni abonnement.</p>
 					<a class="pill pill-dark" href={setup}>Télécharger pour Windows</a>
-					<a class="link versions" href={releases}>Choisir une autre version</a>
 				</div>
 			</section>
 		</main>
@@ -276,12 +273,6 @@ const workflow = [
 
 	.link:hover {
 		color: var(--oa-text);
-	}
-
-	.versions {
-		display: block;
-		margin-top: 0.75rem;
-		font-size: 0.875rem;
 	}
 
 	.window {
@@ -497,10 +488,6 @@ const workflow = [
 	.cta-card p {
 		margin: 1rem auto 2rem;
 		max-width: 28rem;
-		color: #f3f0ff;
-	}
-
-	.cta-card .versions {
 		color: #f3f0ff;
 	}
 

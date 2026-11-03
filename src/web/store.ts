@@ -76,10 +76,13 @@ export const fetchLogo = () =>
     )
     .catch(() => ((logo = undefined), "")));
 
+export type DesktopInfo = { mode: "local" | "online"; version: string; update: { version: string; url: string } | null };
+
 export function useStore() {
   const [state, setState] = useState<AppState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [locked, setLocked] = useState(false);
+  const [desktop, setDesktop] = useState<DesktopInfo | null>(null);
 
   // Overdue relances are pulled to today on load; server UPDATE is idempotent, so reloads are harmless.
   const load = () =>
@@ -91,7 +94,14 @@ export function useStore() {
       })
       .catch((e) => (e instanceof Unauthorized ? setLocked(true) : setError(String(e.message))));
 
-  // No SSE: serverless cannot hold a stream. Refetch when the tab regains focus.
+  // 404 outside the desktop process: stay null, no error shown.
+  useEffect(() => {
+    request<DesktopInfo>("/api/desktop/info")
+      .then(setDesktop)
+      .catch(() => setDesktop(null));
+  }, []);
+
+  // No SSE: serverless cannot hold a stream. Refetch on tab focus.
   useEffect(() => {
     load();
     addEventListener("focus", load);
@@ -124,5 +134,24 @@ export function useStore() {
     setLocked(true);
   }
 
-  return { state, error, locked, login, logout, clearError: () => setError(null), send, reload: load };
+  async function backup(): Promise<string | null> {
+    try {
+      return (await request<{ file: string }>("/api/desktop/backup", { method: "POST" })).file;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      return null;
+    }
+  }
+
+  async function update(): Promise<boolean> {
+    try {
+      await request<{ ok: true }>("/api/desktop/update", { method: "POST" });
+      return true;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      return false;
+    }
+  }
+
+  return { state, error, locked, desktop, login, logout, backup, update, clearError: () => setError(null), send, reload: load };
 }

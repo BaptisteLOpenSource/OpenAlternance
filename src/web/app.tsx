@@ -145,7 +145,7 @@ function Sidebar({
   mobileOpen: boolean;
   onClose: () => void;
   onOpen: Open;
-  onLogout: () => void;
+  onLogout?: () => void;
 }) {
   // Collapsed rail only on desktop; mobile drawer always shows labels.
   const rail = collapsed && !mobileOpen;
@@ -234,7 +234,7 @@ function Sidebar({
               { label: "Nouveau document (PDF, TXT, Markdown)", run: () => onOpen({ kind: "document" }) },
             ]}
           />
-          <div class="relative" onFocusOut={(e) => !e.currentTarget.contains(e.relatedTarget as Node) && setMenu(false)}>
+          {onLogout && <div class="relative" onFocusOut={(e) => !e.currentTarget.contains(e.relatedTarget as Node) && setMenu(false)}>
             <button
               type="button"
               aria-expanded={menu}
@@ -265,7 +265,7 @@ function Sidebar({
                 </button>
               </div>
             )}
-          </div>
+          </div>}
         </div>
       </aside>
     </>
@@ -399,8 +399,9 @@ function Header({
 }
 
 function App() {
-  const { state, error, locked, login, logout, clearError, send, reload } = useStore();
+  const { state, error, locked, desktop, login, logout, backup, update, clearError, send, reload } = useStore();
   const route = useHash();
+  const [updating, setUpdating] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(() => stored("sidebar") === "collapsed");
   const [search, setSearch] = useState("");
@@ -519,7 +520,7 @@ function App() {
         mobileOpen={mobileOpen}
         onClose={() => setMobileOpen(false)}
         onOpen={setDialog}
-        onLogout={logout}
+        onLogout={desktop ? undefined : logout}
       />
       <div class="flex min-w-0 flex-1 flex-col" inert={mobileOpen}>
         <Header
@@ -546,12 +547,28 @@ function App() {
               </Button>
             </div>
           )}
+          {desktop?.update && (
+            <div role="status" class="flex items-center justify-between gap-3 rounded-lg border bg-muted px-4 py-3 text-sm">
+              {updating ? "Téléchargement de la mise à jour…" : `Nouvelle version ${desktop.update.version} disponible`}
+              {!updating && (
+                <Button
+                  size="sm"
+                  onClick={async () => {
+                    setUpdating(true);
+                    if (!(await update())) setUpdating(false);
+                  }}
+                >
+                  Mettre à jour
+                </Button>
+              )}
+            </div>
+          )}
           {!state ? (
             <p role="status" class="text-sm text-muted-foreground">Chargement...</p>
           ) : (
             <>
               {page.path === "" && <DashboardPage state={state} send={send} openCompany={openCompany} onOpen={setDialog} />}
-              {page.path === "compte" && <ComptePage profil={state.profil} send={send} />}
+              {page.path === "compte" && <ComptePage profil={state.profil} send={send} desktop={desktop} backup={backup} />}
               {page.path === "entreprises" &&
                 (companyId === null ? (
                   <CompaniesPage state={state} search={search} send={send} onOpen={setDialog} openCompany={openCompany} filter={companiesFilter} onFilter={setCompaniesFilter} />

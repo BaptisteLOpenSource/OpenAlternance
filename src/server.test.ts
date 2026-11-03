@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { startServer } from "./server";
 
 test("Host inconnu -> 403 (DNS rebinding)", async () => {
   const port = 3290;
@@ -15,5 +16,21 @@ test("Host inconnu -> 403 (DNS rebinding)", async () => {
     expect((await get(`127.0.0.1:${port}`)).status).not.toBe(403);
   } finally {
     server.kill();
+  }
+});
+
+test("startServer: extra answers, null falls through to handle", async () => {
+  const port = 3291;
+  const server = startServer({
+    port,
+    extra: (_req, path) => (path === "/desktop" ? Promise.resolve(new Response("ok")) : null),
+  });
+  try {
+    const base = `http://127.0.0.1:${port}`;
+    expect(await (await fetch(`${base}/desktop`)).text()).toBe("ok");
+    expect((await fetch(`${base}/api/state`)).status).not.toBe(403);
+    expect((await fetch(`${base}/api/state`, { headers: { host: "evil.example" } })).status).toBe(403);
+  } finally {
+    server.stop(true);
   }
 });

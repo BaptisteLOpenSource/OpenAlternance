@@ -6,7 +6,9 @@
   "scripts": {
     "cli": "bun src/cli.ts",
     "serve": "bun src/server.ts",
+    "desktop": "bun src/desktop/main.ts",
     "build": "bun scripts/build.ts",
+    "build:desktop": "bun scripts/build-desktop.ts",
     "setup": "bun src/cli.ts setup",
     "migrate": "bun src/cli.ts migrate",
     "test": "bun test src",

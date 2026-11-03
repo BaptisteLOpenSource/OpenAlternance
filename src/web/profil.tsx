@@ -1,5 +1,7 @@
+import { useState } from "preact/hooks";
 import type { Profil } from "../logic";
 import { fileName } from "../logic";
+import type { DesktopInfo } from "./store";
 import { type Send, formFields } from "./shared";
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Label } from "./ui";
 
@@ -44,7 +46,19 @@ export function ProfilForm({ profil, send, onDone }: { profil: Profil; send: Sen
   );
 }
 
-export function ComptePage({ profil, send }: { profil: Profil; send: Send }) {
+export function ComptePage({
+  profil,
+  send,
+  desktop,
+  backup,
+}: {
+  profil: Profil;
+  send: Send;
+  desktop: DesktopInfo | null;
+  backup: () => Promise<string | null>;
+}) {
+  const [saved, setSaved] = useState<string | null>(null);
+  const save = async () => setSaved(await backup());
   return (
     <Card>
       <CardHeader>
@@ -53,6 +67,14 @@ export function ComptePage({ profil, send }: { profil: Profil; send: Send }) {
       </CardHeader>
       <CardContent>
         <ProfilForm profil={profil} send={send} />
+        {desktop?.mode === "online" && (
+          <div class="mt-6 grid gap-2 border-t pt-4">
+            <Button variant="outline" class="w-full sm:w-auto" onClick={save}>
+              Sauvegarder sur ce PC
+            </Button>
+            {saved && <p class="break-all text-sm text-muted-foreground">Sauvegarde créée : {saved}</p>}
+          </div>
+        )}
       </CardContent>
     </Card>
   );

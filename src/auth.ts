@@ -4,7 +4,7 @@ export const COOKIE = "openalternance";
 export const SESSION_DAYS = 30;
 
 // Hash both sides first: timingSafeEqual needs equal lengths, and this hides the password length.
-const digest = (value: string) => createHash("sha256").update(value).digest();
+export const digest = (value: string) => createHash("sha256").update(value).digest();
 
 export function passwordMatches(input: string, expected: string): boolean {
   return timingSafeEqual(digest(input), digest(expected));

@@ -5,6 +5,8 @@ data/
 
 .env
 dist/
+dist-desktop/
+installer/Output/
 .vercel/
 private/
 

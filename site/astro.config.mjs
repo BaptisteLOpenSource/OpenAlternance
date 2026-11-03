@@ -18,6 +18,7 @@ export default defineConfig({
 				root: { label: 'Français', lang: 'fr' },
 			},
 			head: [
+				{ tag: 'link', attrs: { rel: 'icon', href: '/favicon.ico', sizes: '32x32' } },
 				{ tag: 'link', attrs: { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: true } },
 				{ tag: 'link', attrs: { rel: 'stylesheet', href: geist } },
 			],
@@ -31,9 +32,14 @@ export default defineConfig({
 				ThemeSelect: './src/components/ThemeSelect.astro',
 			},
 			sidebar: [
+				'wiki',
 				{
 					label: 'Installation',
 					items: ['installation-locale', 'installation-en-ligne'],
+				},
+				{
+					label: 'Utilisation',
+					items: ['utilisation-cli', 'ia-claude-code'],
 				},
 			],
 		}),

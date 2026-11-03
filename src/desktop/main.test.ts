@@ -1,0 +1,114 @@
+import { expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const MAIN = join(import.meta.dir, "main.ts");
+const ROOT = join(import.meta.dir, "..", "..");
+
+async function untilReady(stdout: ReadableStream<Uint8Array>, line: string): Promise<void> {
+  const reader = stdout.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  while (!text.includes(line)) {
+    const { value, done } = await reader.read();
+    if (done) throw new Error(`no ready line, got: ${text}`);
+    text += decoder.decode(value);
+  }
+  reader.releaseLock();
+}
+
+async function withApp(port: number, config: object | null, run: (base: string) => Promise<void>) {
+  const dir = mkdtempSync(join(tmpdir(), "oa-main-"));
+  const appdata = join(dir, "roaming");
+  const local = join(dir, "local");
+  mkdirSync(join(appdata, "OpenAlternance"), { recursive: true });
+  if (config) writeFileSync(join(appdata, "OpenAlternance", "config.json"), JSON.stringify(config));
+  const proc = Bun.spawn(["bun", MAIN], {
+    cwd: ROOT,
+    env: {
+      ...process.env,
+      APPDATA: appdata,
+      LOCALAPPDATA: local,
+      OPENALTERNANCE_PASSWORD: "",
+      VERCEL: "",
+      DATABASE_URL: "",
+      OPENALTERNANCE_NO_WINDOW: "1",
+      OPENALTERNANCE_DESKTOP_PORT: String(port),
+    },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  try {
+    await untilReady(proc.stdout, `desktop: http://127.0.0.1:${port}`);
+    await run(`http://127.0.0.1:${port}`);
+  } finally {
+    proc.kill();
+    await proc.exited;
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5 });
+  }
+}
+
+test("local mode serves state and info without origin", async () => {
+  await withApp(3741, null, async (base) => {
+    expect((await fetch(`${base}/api/state`)).status).toBe(200);
+    const info = await (await fetch(`${base}/api/desktop/info`)).json();
+    expect(info.mode).toBe("local");
+    expect(typeof info.version).toBe("string");
+  });
+}, 30_000);
+
+test("desktop POST rejects foreign origin", async () => {
+  await withApp(3742, null, async (base) => {
+    const res = await fetch(`${base}/api/desktop/backup`, {
+      method: "POST",
+      headers: { origin: "http://evil.test" },
+    });
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: "Forbidden" });
+  });
+}, 30_000);
+
+test("backup refused in local mode", async () => {
+  await withApp(3743, null, async (base) => {
+    const res = await fetch(`${base}/api/desktop/backup`, { method: "POST", headers: { origin: base } });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "sauvegarde: mode en ligne uniquement" });
+  });
+}, 30_000);
+
+test("online without url answers 503 guide on every api route", async () => {
+  await withApp(3744, { mode: "online" }, async (base) => {
+    const res = await fetch(`${base}/api/state`);
+    expect(res.status).toBe(503);
+    const body = await res.text();
+    expect(body).toMatch(/Clé Neon absente/);
+    expect(body).toMatch(/installation-desktop/);
+  });
+}, 30_000);
+
+test("second instance on same port exits 0", async () => {
+  await withApp(3745, null, async () => {
+    const dir = mkdtempSync(join(tmpdir(), "oa-main2-"));
+    try {
+      const proc = Bun.spawn(["bun", MAIN], {
+        cwd: ROOT,
+        env: {
+          ...process.env,
+          APPDATA: join(dir, "roaming"),
+          LOCALAPPDATA: join(dir, "local"),
+          OPENALTERNANCE_PASSWORD: "",
+          VERCEL: "",
+          DATABASE_URL: "",
+          OPENALTERNANCE_NO_WINDOW: "1",
+          OPENALTERNANCE_DESKTOP_PORT: "3745",
+        },
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      expect(await proc.exited).toBe(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true, maxRetries: 5 });
+    }
+  });
+}, 60_000);

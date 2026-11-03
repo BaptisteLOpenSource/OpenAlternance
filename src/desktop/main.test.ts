@@ -86,7 +86,8 @@ test("update without a known release answers 400", async () => {
   });
 }, 30_000);
 
-test("online without url answers 503 guide on every api route", async () => {
+// win32 config path; covered by the windows release job.
+test.skipIf(process.platform !== "win32")("online without url answers 503 guide on every api route", async () => {
   await withApp(3744, { mode: "online" }, async (base) => {
     const res = await fetch(`${base}/api/state`);
     expect(res.status).toBe(503);

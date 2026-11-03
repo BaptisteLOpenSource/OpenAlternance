@@ -36,26 +36,26 @@
 
 ## Choisir son mode
 
-| | 💻 Local | ☁️ En ligne |
-|---|---|---|
-| Base | fichier SQLite `data/openalternance.db` | Neon Postgres |
-| Accès | `http://127.0.0.1:3000`, un seul poste | partout, via Vercel |
-| Coût | aucun | offres gratuites Vercel et Neon suffisantes |
-| Sauvegarde | copier le fichier `.db` | branches et sauvegardes Neon |
-| Guide | [installation locale](docs/installation-locale.md) | [installation en ligne](docs/installation-en-ligne.md) |
+| | 🪟 Desktop (Windows) | ☁️ En ligne | 💻 Développeur |
+|---|---|---|---|
+| Base | SQLite sur ton PC, ou Neon | Neon Postgres | SQLite `data/openalternance.db` |
+| Accès | fenêtre dédiée, un seul poste (ou Neon pour plusieurs PC) | partout, via Vercel | `http://127.0.0.1:3000` |
+| Coût | aucun | offres gratuites Vercel et Neon suffisantes | aucun |
+| Guide | [installation desktop](docs/installation-desktop.md) | [installation en ligne](docs/installation-en-ligne.md) | [installation développeur](docs/installation-dev.md) |
 
-## Démarrage rapide (local)
+## Démarrage rapide (Windows)
 
-Prérequis : [Bun](https://bun.sh).
+Télécharge `OpenAlternance-Setup.exe` depuis les [versions](https://github.com/BaptisteLOpenSource/OpenAlternance/releases/latest)
+et suis le [guide desktop](docs/installation-desktop.md). Sans installation, pour le développement :
 
 ```bash
 bun install
-cp .env.example .env   # puis choisir OPENALTERNANCE_PASSWORD (16 caractères minimum)
+cp .env.example .env   # facultatif en local : OPENALTERNANCE_PASSWORD (16 caractères minimum)
 bun run setup          # crée la base et ajoute des entreprises d'exemple
 bun run serve          # -> http://127.0.0.1:3000
 ```
 
-`bun run setup` ne remplit les exemples que si la base est vide.
+`bun run setup` ne remplit les exemples que si la base est vide. Détails : [installation développeur](docs/installation-dev.md).
 
 ## Fonctionnalités
 
@@ -107,8 +107,9 @@ Des exemples fictifs sont dans [`exemples/`](exemples/).
 
 ## Documentation
 
-- [Installation locale](docs/installation-locale.md)
+- [Installation desktop](docs/installation-desktop.md)
 - [Installation en ligne](docs/installation-en-ligne.md)
+- [Installation développeur](docs/installation-dev.md)
 - [Architecture](ARCHITECTURE.md)
 - [Décisions](docs/decisions/)
 

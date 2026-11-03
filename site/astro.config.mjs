@@ -35,7 +35,7 @@ export default defineConfig({
 				'wiki',
 				{
 					label: 'Installation',
-					items: ['installation-locale', 'installation-en-ligne'],
+					items: ['installation-desktop', 'installation-en-ligne', 'installation-dev'],
 				},
 				{
 					label: 'Utilisation',

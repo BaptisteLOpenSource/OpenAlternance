@@ -20,12 +20,12 @@ Pas de serveur MCP pour l'instant : le skill et la CLI couvrent les mêmes actio
 
 Copie un prompt (bouton en haut à droite du bloc) et colle-le dans ton IA.
 
-### Installation locale
+### Installation développeur
 
 ```text
 Installe OpenAlternance en local sur ma machine.
 Dépôt : https://github.com/BaptisteLOpenSource/OpenAlternance
-Guide : https://openalternance.baptisteledev.fr/installation-locale/
+Guide : https://openalternance.baptisteledev.fr/installation-dev/
 Étapes : vérifier que Bun est installé, cloner, bun install, copier .env.example en .env,
 générer un OPENALTERNANCE_PASSWORD de 24 caractères, laisser DATABASE_URL vide,
 bun run setup puis bun run serve. Donne-moi le mot de passe et l'URL à la fin.

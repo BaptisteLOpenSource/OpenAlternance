@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 // Static imports stay db-free: db.ts reads DATABASE_URL at import.
-import { appendFileSync, mkdirSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { win32 } from "node:path";
 import pkg from "../../package.json";
@@ -117,10 +117,18 @@ async function openWindow(url: string): Promise<void> {
   if (process.env.OPENALTERNANCE_NO_WINDOW) return;
   const start = (target: string[]) =>
     Bun.spawn(["cmd", "/c", "start", "", ...target], { stdin: "ignore", stdout: "ignore", stderr: "ignore" }).exited;
-  try {
-    if ((await start(["msedge", `--app=${url}`])) === 0) return;
-  } catch (error) {
-    log(error);
+  // `start msedge` pops a blocking dialog when Edge is not registered
+  const edge = [process.env["ProgramFiles(x86)"], process.env.ProgramFiles, process.env.LOCALAPPDATA]
+    .filter(Boolean)
+    .map((dir) => win32.join(dir!, "Microsoft", "Edge", "Application", "msedge.exe"))
+    .find((exe) => existsSync(exe));
+  if (edge) {
+    try {
+      Bun.spawn([edge, `--app=${url}`], { stdin: "ignore", stdout: "ignore", stderr: "ignore" });
+      return;
+    } catch (error) {
+      log(error);
+    }
   }
   await start([url]);
 }

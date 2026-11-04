@@ -2,7 +2,7 @@ import { ChevronLeft, ChevronRight, Download, Trash2 } from "lucide-preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { CLOSING_STATUTS, LETTRE_STATUTS, type Profil, MOIS_MIN, escapeHtml, fileName, toIso } from "../logic";
 import type { Lettre } from "../repo";
-import { createLettre, lettreOf } from "./commands";
+import { createLettre, deleteLettre, lettreOf } from "./commands";
 import { Select } from "./menus";
 import { CopyButton, LETTRE_LABEL, LettreStatutControl, type Send, isOpen, lettreStatut, shortDate } from "./shared";
 import { type AppState, fetchLettre, fetchLogo } from "./store";
@@ -214,7 +214,7 @@ function LettreView({ lettre, send, onTemplate, profil, onDirty }: { lettre: Let
     };
   }, [title]);
   const remove = async () => {
-    if (confirm(`Supprimer la lettre de ${lettre.entreprise || lettre.file} ?`) && (await send("lettre-supprimer", { file: lettre.file }))) location.hash = "#/lettres";
+    if (await deleteLettre(lettre, send)) location.hash = "#/lettres";
   };
   return (
     <Card>

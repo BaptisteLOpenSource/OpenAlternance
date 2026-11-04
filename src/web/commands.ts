@@ -23,6 +23,9 @@ export type Command = {
 export const lettreOf = (company: CompanyRow, state: AppState) =>
   state.lettres.find((l) => l.type === "lettre" && l.entreprise.toLowerCase() === company.nom.toLowerCase());
 
+export const deleteLettre = async (lettre: Lettre, send: Send): Promise<boolean> =>
+  confirm(`Supprimer la lettre de ${lettre.entreprise || lettre.file} ?`) && (await send("lettre-supprimer", { file: lettre.file }));
+
 export async function openLettre(company: CompanyRow, lettre: Lettre | null | undefined, send: Send, profil: Profil) {
   if (lettre) location.hash = `#/lettres/${encodeURIComponent(lettre.file)}`;
   else await createLettre(company, send, profil);
@@ -92,8 +95,7 @@ export const COMMANDS: Command[] = [
     id: "lettre-supprimer",
     label: "Supprimer la lettre",
     scope: ["company", "lettres"],
-    run: ({ send, lettre }) =>
-      lettre && confirm(`Supprimer la lettre de ${lettre.entreprise || lettre.file} ?`) && send("lettre-supprimer", { file: lettre.file }),
+    run: ({ send, lettre }) => lettre && deleteLettre(lettre, send),
   },
   {
     id: "site-web",

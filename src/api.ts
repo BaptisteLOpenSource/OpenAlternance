@@ -2,6 +2,7 @@ import { SESSION_DAYS, clearSessionCookie, digest, newSessionToken, passwordMatc
 import { sql } from "./db";
 import { FICHE_TEXTES, LETTRE_STATUTS, MAIL_CANAUX, NOM_FICHIER_DEFAUT, STATUTS, SUIVIS, TYPES, delaiDays, documentFile, isoAgo, isoDate, oneOf, stripFrontmatter, today } from "./logic";
 import { MAX_PDF_BASE64, pdfToHtml, renderDocument } from "./documents";
+import { logoType } from "./logo";
 import * as repo from "./repo";
 
 const PASSWORD = process.env.OPENALTERNANCE_PASSWORD ?? "";
@@ -21,6 +22,13 @@ export function authRequired(env: Record<string, string | undefined>): boolean {
 
 // Key embeds password fingerprint: old-password sessions stop matching.
 const sessionKey = (cookieToken: string): string => `${digest(PASSWORD).toString("hex").slice(0, 16)}.${cookieToken}`;
+
+function pdfBytes(data: string): Uint8Array {
+  if (data.length > MAX_PDF_BASE64) throw new Error("PDF trop volumineux (3 Mo max)");
+  const bytes = Buffer.from(data, "base64");
+  if (bytes.subarray(0, 5).toString("latin1") !== "%PDF-") throw new Error("fichier PDF invalide");
+  return new Uint8Array(bytes);
+}
 
 const json = (body: unknown, status = 200, headers?: HeadersInit) => Response.json(body, { status, headers });
 const notFound = () => json({ error: "Introuvable" }, 404);
@@ -43,7 +51,7 @@ async function isAuthenticated(req: Request): Promise<boolean> {
 }
 
 const state = async () => {
-  const [companies, contacts, interactions, lettres, pdfs, documents, profil] = await Promise.all([
+  const [companies, contacts, interactions, lettres, pdfs, documents, profil, cv] = await Promise.all([
     repo.listCompanies(),
     repo.listContacts(),
     repo.listInteractions(),
@@ -51,11 +59,18 @@ const state = async () => {
     repo.listPdfs(),
     repo.listDocuments(),
     repo.getProfil(),
+    repo.hasFichier("cv.pdf"),
   ]);
-  return { today: today(), companies, contacts, interactions, lettres, pdfs, documents, profil };
+  return { today: today(), companies, contacts, interactions, lettres, pdfs, documents, profil, cv };
 };
 
 type Field = (name: string) => string;
+
+// Emptied is a valid save; a missing key is a client bug and must not wipe the text.
+const content = (body: Record<string, unknown>): string => {
+  if (typeof body.content !== "string") throw new Error("champ requis: content");
+  return body.content.trim();
+};
 
 // Relance optionnelle: champ présent mais vide = null (pas de relance); champ absent = défaut.
 const delaiField = (body: Record<string, unknown>, optional: (name: string) => string | undefined) =>
@@ -116,22 +131,25 @@ const ACTIONS: Record<string, (required: Field, optional: (name: string) => stri
     const format = oneOf(required("format"), ["md", "txt"] as const, "format");
     return repo.addDocument(documentFile(required("titre"), format), format, optional("content") ?? "");
   },
-  // PDF text becomes HTML here; nothing from the PDF is stored as markup.
-  "document-pdf": async (required) => {
-    const data = required("data");
-    if (data.length > MAX_PDF_BASE64) throw new Error("PDF trop volumineux (3 Mo max)");
-    const bytes = Buffer.from(data, "base64");
-    if (bytes.subarray(0, 5).toString("latin1") !== "%PDF-") throw new Error("fichier PDF invalide");
-    await repo.addDocument(documentFile(required("titre"), "html"), "html", await pdfToHtml(new Uint8Array(bytes)));
+  "document-pdf": async (required) => repo.addPdfDocument(documentFile(required("titre"), "pdf"), pdfBytes(required("data"))),
+  "document-texte": async (required) => {
+    const name = required("name");
+    const data = SAFE_FICHIER.test(name) ? await repo.readPdf(name) : null;
+    if (!data) throw new Error(`PDF introuvable: ${name}`);
+    await repo.addDocument(`${name.slice(0, -".pdf".length)}.html`, "html", await pdfToHtml(data));
   },
-  "document-modifier": (required) => repo.updateDocument(required("name"), required("content")),
+  cv: async (required) => repo.writeFichier("cv.pdf", pdfBytes(required("data"))),
+  "document-modifier": (required, _optional, body) => repo.updateDocument(required("name"), content(body)),
   "document-supprimer": (required) => repo.deleteDocument(required("name")),
   "entreprise-supprimer": (required) => repo.deleteCompany(required("entreprise")),
-  lettre: (required) => repo.writeLettre(required("entreprise"), required("content")),
-  template: (required) => repo.writeTemplate(required("content")),
+  lettre: (required, optional, body) => {
+    const file = optional("file");
+    return file ? repo.writeLettreFile(file, content(body)) : repo.writeLettre(required("entreprise"), content(body));
+  },
+  template: (_required, _optional, body) => repo.writeTemplate(content(body)),
   "lettre-statut": (required, optional) =>
     repo.setLettreStatut(required("entreprise"), oneOf(required("statut"), LETTRE_STATUTS, "statut"), optional("date")),
-  "lettre-supprimer": (required) => repo.deleteLettre(required("entreprise")),
+  "lettre-supprimer": (required) => repo.deleteLettre(required("file")),
   statut: (required) => repo.setStatut(required("entreprise"), oneOf(required("statut"), STATUTS, "statut")),
   "sans-reponse": (required) => repo.closeRelance(required("entreprise")),
   "relance-date": (required) => repo.setRelance(required("entreprise"), required("date")),
@@ -173,25 +191,31 @@ async function logout(req: Request): Promise<Response> {
   return json({ ok: true }, 200, { "set-cookie": clearSessionCookie() });
 }
 
-async function file(name: string, type: string): Promise<Response> {
-  const data = await repo.readFichier(name);
-  return data ? new Response(new Uint8Array(data), { headers: { "content-type": type } }) : notFound();
+// Opened directly, an SVG runs its scripts on this origin: deny everything but inline style.
+const SVG_HEADERS = { "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'" };
+
+async function file(name: string, type: string, headers: Record<string, string> = {}, read = repo.readFichier): Promise<Response> {
+  const data = await read(name);
+  return data ? new Response(new Uint8Array(data), { headers: { "content-type": type, ...headers } }) : notFound();
 }
 
 async function handleGet(path: string): Promise<Response> {
   if (path === "/api/state") return json(await state());
   if (path === "/api/cv.pdf") return file("cv.pdf", "application/pdf");
   if (path === "/api/logo.png") return file("logo.png", "image/png");
-  if (path === "/api/logo.svg") {
-    const res = await file("logo.svg", "image/svg+xml");
-    // Opened directly, an SVG runs its scripts on this origin: deny everything but inline style.
-    res.headers.set("content-security-policy", "default-src 'none'; style-src 'unsafe-inline'");
-    return res;
+  if (path === "/api/logo.svg") return file("logo.svg", "image/svg+xml", SVG_HEADERS);
+  if (path.startsWith("/api/logos/")) {
+    const id = path.slice("/api/logos/".length);
+    if (!/^\d+$/.test(id)) return notFound();
+    const data = await repo.readCompanyLogo(Number(id));
+    if (!data) return notFound();
+    const type = logoType(data) ?? "application/octet-stream";
+    return new Response(new Uint8Array(data), { headers: { "content-type": type, ...(type === "image/svg+xml" ? SVG_HEADERS : {}) } });
   }
   if (path.startsWith("/api/fichiers/")) {
     const name = decodeURIComponent(path.slice("/api/fichiers/".length));
     if (!SAFE_FICHIER.test(name)) return notFound();
-    return file(name, "application/pdf");
+    return file(name, "application/pdf", {}, repo.readPdf);
   }
   if (path.startsWith("/api/documents/")) {
     const doc = await repo.readDocument(decodeURIComponent(path.slice("/api/documents/".length)));

@@ -3,7 +3,7 @@ import type { ComponentChildren } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { CLOSING_STATUTS, FICHE_TEXTES, MAIL_CANAUX, SUIVIS, isWebUrl } from "../logic";
 import type { CompanyRow, Lettre } from "../repo";
-import { lettreOf, openLettre } from "./commands";
+import { deleteLettre, lettreOf, openLettre } from "./commands";
 import { Select } from "./menus";
 import { CopyButton, DeleteEchange, LettreStatutControl, type Open, RelanceBadge, ficheOf, RelanceControls, STATUT, type Send, StatutSelect, isOpen, sendFiche, shortDate } from "./shared";
 import { type AppState, fetchLettre } from "./store";
@@ -68,7 +68,7 @@ function Prop({ icon: Icon, label, children }: { icon: typeof Globe; label: stri
   );
 }
 
-function LettreEditor({ company, lettre, send }: { company: CompanyRow; lettre: Lettre; send: Send }) {
+function LettreEditor({ lettre, send }: { lettre: Lettre; send: Send }) {
   const { file } = lettre;
   const [saved, setSaved] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
@@ -84,7 +84,7 @@ function LettreEditor({ company, lettre, send }: { company: CompanyRow; lettre: 
   const dirty = saved !== null && draft !== saved;
   const save = async () => {
     if (!dirty) return true;
-    const ok = await send("lettre", { entreprise: company.nom, content: draft });
+    const ok = await send("lettre", { file, content: draft });
     if (ok) setSaved(draft);
     return ok;
   };
@@ -99,7 +99,7 @@ function LettreEditor({ company, lettre, send }: { company: CompanyRow; lettre: 
           <Button size="sm" disabled={!dirty} onClick={save}>
             Enregistrer
           </Button>
-          <Button variant="ghost" size="icon-sm" aria-label="Supprimer la lettre" onClick={() => confirm(`Supprimer la lettre de ${company.nom} ?`) && send("lettre-supprimer", { entreprise: company.nom })}>
+          <Button variant="ghost" size="icon-sm" aria-label="Supprimer la lettre" onClick={() => deleteLettre(lettre, send)}>
             <Trash2 />
           </Button>
         </CardAction>
@@ -156,7 +156,7 @@ export function CompanyPage({ state, id, send, onOpen }: { state: AppState; id: 
         <div class="grid gap-5 px-6 pb-6">
           <div class="-mt-9 flex flex-wrap items-end justify-between gap-3">
             <div class="flex size-[4.5rem] items-center justify-center overflow-hidden rounded-2xl border border-border/40 bg-card text-3xl font-semibold shadow-sm">
-              {company.logo && isWebUrl(company.logo) ? <img src={company.logo} alt="" class="size-full object-contain p-2" /> : company.nom[0]?.toUpperCase()}
+              {company.logo && isWebUrl(company.logo) ? <img src={`/api/logos/${company.id}`} alt="" class="size-full object-contain p-2" /> : company.nom[0]?.toUpperCase()}
             </div>
             <div class="flex flex-wrap gap-2">
               <Button size="sm" onClick={() => onOpen({ kind: "echange", company: company.nom })}>
@@ -212,7 +212,7 @@ export function CompanyPage({ state, id, send, onOpen }: { state: AppState; id: 
 
       <div class="grid grid-cols-1 gap-4 md:gap-6 lg:grid-cols-3">
         <div class="grid content-start gap-4 md:gap-6 lg:col-span-2">
-          {lettre && <LettreEditor key={`${lettre.file}-${lettre.statut}-${lettre.date_envoi}`} company={company} lettre={lettre} send={send} />}
+          {lettre && <LettreEditor key={`${lettre.file}-${lettre.statut}-${lettre.date_envoi}`} lettre={lettre} send={send} />}
           <Card>
             <CardHeader>
               <CardTitle class="text-base">Contacts</CardTitle>

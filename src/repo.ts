@@ -1,4 +1,5 @@
-import { sql } from "./db";
+import { isUniqueViolation, sql } from "./db";
+import { fetchLogo } from "./logo";
 import {
   CLOSING_STATUTS,
   type DocFormat,
@@ -24,7 +25,7 @@ import {
 } from "./logic";
 
 const SAFE_NAME = /^[\w.-]+\.md$/;
-const SAFE_DOCUMENT = /^[\w.-]+\.(md|txt|html)$/;
+const SAFE_DOCUMENT = /^[\w.-]+\.(md|txt|html|pdf)$/;
 
 export type DocumentRow = { name: string; format: DocFormat };
 const TEMPLATE_FILE = "_template.md";
@@ -87,7 +88,7 @@ export async function addCompany(
   try {
     await sql`INSERT INTO companies (nom, ville, site, notes) VALUES (${nom}, ${fields.ville ?? null}, ${site(fields.site)}, ${fields.notes ?? null})`;
   } catch (error) {
-    if ((error as { code?: string }).code === "23505") throw new Error(`Entreprise déjà existante: ${nom}`);
+    if (isUniqueViolation(error)) throw new Error(`Entreprise déjà existante: ${nom}`);
     throw error;
   }
 }
@@ -168,7 +169,10 @@ export async function updateContact(
 // Contacts and interactions go with it: ON DELETE CASCADE in src/db.ts.
 export async function deleteCompany(companyNom: string): Promise<void> {
   const company = await findCompany(companyNom);
-  await sql`DELETE FROM companies WHERE id = ${company.id}`;
+  await sql.begin(async (tx) => {
+    await tx`DELETE FROM fichiers WHERE name = ${`logo-${company.id}`}`;
+    await tx`DELETE FROM companies WHERE id = ${company.id}`;
+  });
 }
 
 export async function setStatut(companyNom: string, statut: Statut): Promise<void> {
@@ -217,13 +221,41 @@ export type Fiche = {
   mail_canal?: string;
 } & Partial<Record<FicheExtra, string>>;
 
+// Logo bytes are copied on save: the page never loads the remote URL.
+async function storeLogo(companyId: number, url: string | null): Promise<void> {
+  const name = `logo-${companyId}`;
+  if (url === null) await sql`DELETE FROM fichiers WHERE name = ${name}`;
+  else await writeFichier(name, await fetchLogo(url));
+}
+
+// ponytail: per-process memory, lost on restart; persist if restarts make refetching hurt
+const LOGO_RETRY_MS = 10 * 60_000;
+const logoFailures = new Map<string, number>();
+
+// Logos set before they were stored have no row: fetch once on first view.
+export async function readCompanyLogo(companyId: number): Promise<Uint8Array | null> {
+  const name = `logo-${companyId}`;
+  const stored = await readFichier(name);
+  if (stored) return stored;
+  const [row] = await sql<{ logo: string | null }[]>`SELECT logo FROM companies WHERE id = ${companyId}`;
+  if (!row?.logo) return null;
+  const key = `${companyId}:${row.logo}`;
+  if (Date.now() - (logoFailures.get(key) ?? -LOGO_RETRY_MS) < LOGO_RETRY_MS) return null;
+  const data = await fetchLogo(row.logo).catch(() => null);
+  if (data) await writeFichier(name, data);
+  else logoFailures.set(key, Date.now());
+  return data;
+}
+
 export async function updateCompany(companyNom: string, fields: Fiche): Promise<void> {
   const company = await findCompany(companyNom);
+  const logo = site(fields.logo);
+  if (logo !== company.logo) await storeLogo(company.id, logo);
   await sql`UPDATE companies SET
     ville = ${fields.ville ?? null},
     site = ${site(fields.site)},
     notes = ${fields.notes ?? null},
-    logo = ${site(fields.logo)},
+    logo = ${logo},
     poste = ${fields.poste ?? null},
     publication = ${fields.publication ?? null},
     candidatures = ${fields.candidatures ?? null},
@@ -260,7 +292,7 @@ export async function renameCompany(companyNom: string, nom: string): Promise<vo
       }
     });
   } catch (error) {
-    if ((error as { code?: string }).code === "23505") throw new Error(`Entreprise déjà existante: ${nom}`);
+    if (isUniqueViolation(error)) throw new Error(`Entreprise déjà existante: ${nom}`);
     throw error;
   }
 }
@@ -321,6 +353,13 @@ export async function writeLettre(companyNom: string, content: string): Promise<
   await upsertLettre(await lettreFile(companyNom), content);
 }
 
+export async function writeLettreFile(file: string, content: string): Promise<void> {
+  if (!SAFE_NAME.test(file) || file === TEMPLATE_FILE) throw new Error(`Lettre introuvable: ${file}`);
+  const rows = await sql`UPDATE lettres SET content = ${`${content}
+`} WHERE file = ${file} RETURNING file`;
+  if (!rows.length) throw new Error(`Lettre introuvable: ${file}`);
+}
+
 export async function writeTemplate(content: string): Promise<void> {
   await upsertLettre(TEMPLATE_FILE, content);
 }
@@ -343,10 +382,11 @@ async function logCandidature(companyNom: string, date: string): Promise<void> {
   if (!logged) await logInteraction(companyNom, "candidature", { date });
 }
 
-export async function deleteLettre(companyNom: string): Promise<void> {
-  const file = await lettreFile(companyNom);
+// Keyed by file: a letter outlives its company, so the name cannot find it.
+export async function deleteLettre(file: string): Promise<void> {
+  if (!SAFE_NAME.test(file) || file === TEMPLATE_FILE) throw new Error(`Lettre introuvable: ${file}`);
   const [deleted] = await sql<{ file: string }[]>`DELETE FROM lettres WHERE file = ${file} RETURNING file`;
-  if (!deleted) throw new Error(`Lettre introuvable: ${companyNom}`);
+  if (!deleted) throw new Error(`Lettre introuvable: ${file}`);
 }
 
 export async function getProfil(): Promise<Profil> {
@@ -364,8 +404,20 @@ export async function setProfil(fields: Profil): Promise<void> {
 }
 
 export async function listPdfs(): Promise<string[]> {
-  const rows = await sql<{ name: string }[]>`SELECT name FROM fichiers WHERE name LIKE '%.pdf' ORDER BY name`;
+  const rows = await sql<{ name: string }[]>`SELECT name FROM fichiers
+    WHERE name LIKE '%.pdf' AND name <> 'cv.pdf' AND name NOT LIKE 'doc-%' AND name NOT IN (SELECT name FROM documents)
+    ORDER BY name`;
   return rows.map((row) => row.name);
+}
+
+export async function writeFichier(name: string, data: Uint8Array): Promise<void> {
+  await sql`INSERT INTO fichiers (name, data) VALUES (${name}, ${data})
+    ON CONFLICT (name) DO UPDATE SET data = EXCLUDED.data`;
+}
+
+export async function hasFichier(name: string): Promise<boolean> {
+  const [row] = await sql`SELECT 1 AS ok FROM fichiers WHERE name = ${name}`;
+  return row !== undefined;
 }
 
 export async function readFichier(name: string): Promise<Uint8Array | null> {
@@ -389,7 +441,28 @@ export async function addDocument(name: string, format: DocFormat, content: stri
   try {
     await sql`INSERT INTO documents (name, format, content) VALUES (${name}, ${format}, ${content})`;
   } catch (error) {
-    if ((error as { code?: string }).code === "23505") throw new Error(`Document déjà existant: ${name}`);
+    if (isUniqueViolation(error)) throw new Error(`Document déjà existant: ${name}`);
+    throw error;
+  }
+}
+
+// Bytes sit under doc-<name> so a document can never overwrite or delete cv.pdf or a lettre PDF.
+const docFichier = (name: string) => `doc-${name}`;
+
+export async function readPdf(name: string): Promise<Uint8Array | null> {
+  return (await readFichier(docFichier(name))) ?? (await readFichier(name));
+}
+
+export async function addPdfDocument(name: string, data: Uint8Array): Promise<void> {
+  if (!SAFE_DOCUMENT.test(name)) throw new Error(`nom de document invalide: ${name}`);
+  try {
+    await sql.begin(async (tx) => {
+      if ((await tx`SELECT 1 FROM fichiers WHERE name = ${name}`).length > 0) throw new Error(`Document déjà existant: ${name}`);
+      await tx`INSERT INTO documents (name, format, content) VALUES (${name}, 'pdf', '')`;
+      await tx`INSERT INTO fichiers (name, data) VALUES (${docFichier(name)}, ${data})`;
+    });
+  } catch (error) {
+    if (isUniqueViolation(error)) throw new Error(`Document déjà existant: ${name}`);
     throw error;
   }
 }
@@ -400,6 +473,9 @@ export async function updateDocument(name: string, content: string): Promise<voi
 }
 
 export async function deleteDocument(name: string): Promise<void> {
-  const [deleted] = await sql<{ name: string }[]>`DELETE FROM documents WHERE name = ${name} RETURNING name`;
-  if (!deleted) throw new Error(`Document introuvable: ${name}`);
+  await sql.begin(async (tx) => {
+    const [deleted] = await tx<DocumentRow[]>`DELETE FROM documents WHERE name = ${name} RETURNING name, format`;
+    if (!deleted) throw new Error(`Document introuvable: ${name}`);
+    if (deleted.format === "pdf") await tx`DELETE FROM fichiers WHERE name = ${docFichier(name)}`;
+  });
 }

@@ -1,4 +1,4 @@
-import { describe, expect, test, beforeAll, afterAll } from "bun:test";
+import { describe, expect, test, beforeAll, afterAll, afterEach } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
@@ -10,6 +10,7 @@ if (DB === process.env.DATABASE_URL) throw new Error("TEST_DATABASE_URL = DATABA
 process.env.DATABASE_URL = DB;
 process.env.OPENALTERNANCE_PASSWORD = "mot-de-passe-de-test-ok";
 const { handle, passwordProblem, authRequired } = await import("./api");
+const { logoDeps } = await import("./logo");
 const ORIGIN = "http://127.0.0.1:3000";
 const fingerprint = (password: string) => createHash("sha256").update(password).digest("hex").slice(0, 16);
 const req = (path: string, init: RequestInit & { origin?: string } = {}) =>
@@ -72,8 +73,12 @@ describe("en-têtes de sécurité (vercel.json)", () => {
     const script = csp.split(";").find((d) => d.trim().startsWith("script-src"))!;
     expect(script).not.toContain("unsafe-inline");
     expect(script).not.toContain("unsafe-eval");
-    expect(csp).toContain("frame-ancestors 'none'");
+    expect(csp).toContain("frame-ancestors 'self'");
     expect(csp).toContain("object-src 'none'");
+  });
+
+  test("iframes PDF même origine seulement", () => {
+    expect(headers["X-Frame-Options"]).toBe("SAMEORIGIN");
   });
 
   test("API non cacheable", () => {
@@ -98,14 +103,20 @@ test("hashes CSP = scripts inline du build (si dist existe)", () => {
 
 describe("base de test (TEST_DATABASE_URL)", () => {
   let api: typeof import("./api");
+  let repo: typeof import("./repo");
   let sql: typeof import("./db").sql;
   let cookie = "";
   const login = async (password: string) =>
     req("/api/login", { method: "POST", origin: ORIGIN, body: JSON.stringify({ password }) });
 
+  afterEach(() => {
+    logoDeps.lookup = logoDeps.fetch = undefined;
+  });
+
   beforeAll(async () => {
     ({ sql } = await import("./db"));
     api = await import("./api");
+    repo = await import("./repo");
     await (await import("./db")).migrate();
     await sql`DELETE FROM companies WHERE nom LIKE 'TEST-%'`;
     await sql`DELETE FROM login_attempts`;
@@ -262,6 +273,162 @@ describe("base de test (TEST_DATABASE_URL)", () => {
 
   test("PDF: nom non autorisé -> 404", async () => {
     expect((await auth("/api/fichiers/..%2Fcv.txt")).status).toBe(404);
+  });
+
+  const PDF_B64 = Buffer.from("%PDF-1.4\n%test\n").toString("base64");
+
+  test("document PDF: stocké tel quel, format pdf, hors liste PDF importés", async () => {
+    const res = await auth("/api/document-pdf", { method: "POST", body: JSON.stringify({ titre: "docpdftest", data: PDF_B64 }) });
+    expect(res.status).toBe(200);
+    const state = (await res.json()) as { documents: { name: string; format: string }[]; pdfs: string[] };
+    expect(state.documents).toContainEqual({ name: "docpdftest.pdf", format: "pdf" });
+    expect(state.pdfs).not.toContain("docpdftest.pdf");
+    expect(state.pdfs).not.toContain("doc-docpdftest.pdf");
+    expect(await repo.hasFichier("docpdftest.pdf")).toBe(false);
+    expect(await repo.hasFichier("doc-docpdftest.pdf")).toBe(true);
+    const served = await auth("/api/fichiers/docpdftest.pdf");
+    expect(served.headers.get("content-type")).toBe("application/pdf");
+    expect(Buffer.from(await served.arrayBuffer()).toString("latin1")).toBe("%PDF-1.4\n%test\n");
+  });
+
+  test("document PDF: titre déjà pris -> 400", async () => {
+    const res = await auth("/api/document-pdf", { method: "POST", body: JSON.stringify({ titre: "docpdftest", data: PDF_B64 }) });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toMatch(/Document déjà existant/);
+  });
+
+  test("document PDF: titre collisionnant avec un PDF de lettre -> 400, rien écrit", async () => {
+    await repo.writeFichier("lettre-xxx.pdf", new Uint8Array(Buffer.from("%PDF-1.4\n%lettre\n")));
+    const res = await auth("/api/document-pdf", { method: "POST", body: JSON.stringify({ titre: "lettre-xxx", data: PDF_B64 }) });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toMatch(/Document déjà existant/);
+    const state = (await (await auth("/api/state")).json()) as { documents: { name: string }[]; pdfs: string[] };
+    expect(state.documents.map((doc) => doc.name)).not.toContain("lettre-xxx.pdf");
+    expect(state.pdfs).toContain("lettre-xxx.pdf");
+    await sql`DELETE FROM fichiers WHERE name = 'lettre-xxx.pdf'`;
+  });
+
+  test("document PDF: supprimer le document supprime le fichier", async () => {
+    await auth("/api/document-supprimer", { method: "POST", body: JSON.stringify({ name: "docpdftest.pdf" }) });
+    expect((await auth("/api/fichiers/docpdftest.pdf")).status).toBe(404);
+    expect(await repo.hasFichier("doc-docpdftest.pdf")).toBe(false);
+  });
+
+  test("CV: non PDF -> 400, rien écrit", async () => {
+    const res = await auth("/api/cv", { method: "POST", body: JSON.stringify({ data: "aGVsbG8=" }) });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toBe("fichier PDF invalide");
+    expect((await auth("/api/cv.pdf")).status).toBe(404);
+  });
+
+  test("CV: PDF -> servi, absent de PDF importés", async () => {
+    const res = await auth("/api/cv", { method: "POST", body: JSON.stringify({ data: PDF_B64 }) });
+    expect(res.status).toBe(200);
+    const state = (await res.json()) as { pdfs: string[]; cv: boolean };
+    expect(state.cv).toBe(true);
+    expect(state.pdfs).not.toContain("cv.pdf");
+    expect((await auth("/api/cv.pdf")).status).toBe(200);
+  });
+
+  test("enregistrer un document ou une lettre vidés -> 200, contenu vide", async () => {
+    await auth("/api/document", { method: "POST", body: JSON.stringify({ titre: "vide-test", format: "md", content: "x" }) });
+    const doc = await auth("/api/document-modifier", { method: "POST", body: JSON.stringify({ name: "vide-test.md", content: "" }) });
+    expect(doc.status).toBe(200);
+    expect(((await (await auth("/api/documents/vide-test.md")).json()) as { content: string }).content).toBe("");
+    await sql`DELETE FROM documents WHERE name = 'vide-test.md'`;
+    await auth("/api/entreprise", { method: "POST", body: JSON.stringify({ nom: "TEST-lettre-vide" }) });
+    const lettre = await auth("/api/lettre", { method: "POST", body: JSON.stringify({ entreprise: "TEST-lettre-vide", content: "" }) });
+    expect(lettre.status).toBe(200);
+  });
+
+  test("lettre sans clé content -> 400, contenu intact", async () => {
+    await auth("/api/entreprise", { method: "POST", body: JSON.stringify({ nom: "TEST-sans-content" }) });
+    await auth("/api/lettre", { method: "POST", body: JSON.stringify({ entreprise: "TEST-sans-content", content: "texte" }) });
+    expect((await auth("/api/lettre", { method: "POST", body: JSON.stringify({ entreprise: "TEST-sans-content" }) })).status).toBe(400);
+    expect(((await (await auth("/api/lettres/test-sans-content.md")).json()) as { content: string }).content).toBe("texte\n");
+  });
+
+  test("lettre enregistrée par son fichier, même orpheline ou au frontmatter vidé", async () => {
+    await auth("/api/entreprise", { method: "POST", body: JSON.stringify({ nom: "TEST-par-fichier" }) });
+    await auth("/api/lettre", { method: "POST", body: JSON.stringify({ entreprise: "TEST-par-fichier", content: "a" }) });
+    const save = (file: string, content: string) => auth("/api/lettre", { method: "POST", body: JSON.stringify({ file, content }) });
+    expect((await save("test-par-fichier.md", "")).status).toBe(200);
+    expect((await save("test-par-fichier.md", "b")).status).toBe(200);
+    expect(((await (await auth("/api/lettres/test-par-fichier.md")).json()) as { content: string }).content).toBe("b\n");
+    expect((await save("_template.md", "x")).status).toBe(400);
+    expect((await save("../x.md", "x")).status).toBe(400);
+    expect((await save("test-inconnue.md", "x")).status).toBe(400);
+    expect(await repo.readLettre("test-inconnue.md")).toBeNull();
+  });
+
+  test("lettre orpheline (entreprise supprimée): supprimée par son fichier", async () => {
+    await auth("/api/entreprise", { method: "POST", body: JSON.stringify({ nom: "TEST-orph-suppr" }) });
+    await auth("/api/lettre", { method: "POST", body: JSON.stringify({ entreprise: "TEST-orph-suppr", content: "lettre" }) });
+    await auth("/api/entreprise-supprimer", { method: "POST", body: JSON.stringify({ entreprise: "TEST-orph-suppr" }) });
+    const res = await auth("/api/lettre-supprimer", { method: "POST", body: JSON.stringify({ file: "test-orph-suppr.md" }) });
+    expect(res.status).toBe(200);
+    expect((await auth("/api/lettres/test-orph-suppr.md")).status).toBe(404);
+  });
+
+  test("template de lettre: suppression refusée", async () => {
+    const res = await auth("/api/lettre-supprimer", { method: "POST", body: JSON.stringify({ file: "_template.md" }) });
+    expect(res.status).toBe(400);
+  });
+
+  test("logo: adresse interne refusée (SSRF), fiche non enregistrée", async () => {
+    await auth("/api/entreprise", { method: "POST", body: JSON.stringify({ nom: "TEST-ssrf" }) });
+    const res = await auth("/api/fiche", { method: "POST", body: JSON.stringify({ entreprise: "TEST-ssrf", logo: "http://127.0.0.1:9/x.png" }) });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toMatch(/interne/);
+    const state = (await (await auth("/api/state")).json()) as { companies: { nom: string; logo: string | null }[] };
+    expect(state.companies.find((c) => c.nom === "TEST-ssrf")?.logo).toBeNull();
+  });
+
+  test("logo d'une entreprise sans fichier stocké: récupéré puis servi", async () => {
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    logoDeps.lookup = async () => ["93.184.216.34"];
+    logoDeps.fetch = async () => new Response(png);
+    await auth("/api/entreprise", { method: "POST", body: JSON.stringify({ nom: "TEST-logo-ancien" }) });
+    await sql`UPDATE companies SET logo = 'https://logo.example/a.png' WHERE nom = 'TEST-logo-ancien'`;
+    const [{ id }] = await sql<{ id: number }[]>`SELECT id FROM companies WHERE nom = 'TEST-logo-ancien'`;
+    const res = await auth(`/api/logos/${id}`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("image/png");
+    expect(await repo.hasFichier(`logo-${id}`)).toBe(true);
+  });
+
+  test("logo injoignable: un seul essai, pas de nouvelle récupération à chaque GET", async () => {
+    let calls = 0;
+    logoDeps.lookup = async () => ["93.184.216.34"];
+    logoDeps.fetch = async () => (calls++, new Response(null, { status: 500 }));
+    await auth("/api/entreprise", { method: "POST", body: JSON.stringify({ nom: "TEST-logo-ko" }) });
+    await sql`UPDATE companies SET logo = 'https://logo.example/ko.png' WHERE nom = 'TEST-logo-ko'`;
+    const [{ id }] = await sql<{ id: number }[]>`SELECT id FROM companies WHERE nom = 'TEST-logo-ko'`;
+    await auth(`/api/logos/${id}`);
+    await auth(`/api/logos/${id}`);
+    expect(calls).toBe(1);
+  });
+
+  test("entreprise supprimée -> son logo stocké aussi", async () => {
+    await auth("/api/entreprise", { method: "POST", body: JSON.stringify({ nom: "TEST-logo-suppr" }) });
+    const [{ id }] = await sql<{ id: number }[]>`SELECT id FROM companies WHERE nom = 'TEST-logo-suppr'`;
+    await repo.writeFichier(`logo-${id}`, new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
+    await auth("/api/entreprise-supprimer", { method: "POST", body: JSON.stringify({ entreprise: "TEST-logo-suppr" }) });
+    expect(await repo.hasFichier(`logo-${id}`)).toBe(false);
+  });
+
+  test("logo stocké: servi par son type sniffé, même origine", async () => {
+    await repo.writeFichier("logo-999999", new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+    const res = await auth("/api/logos/999999");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("image/png");
+    await sql`DELETE FROM fichiers WHERE name = 'logo-999999'`;
+    expect((await auth("/api/logos/../etc")).status).toBe(404);
+  });
+
+  test("document-texte: PDF absent -> 400", async () => {
+    const res = await auth("/api/document-texte", { method: "POST", body: JSON.stringify({ name: "absent.pdf" }) });
+    expect(res.status).toBe(400);
   });
 
   test("rate limit: 10 échecs puis 429", async () => {

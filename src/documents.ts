@@ -34,6 +34,7 @@ section{max-width:46rem;margin:0 auto 2rem}p{margin:0 0 1em;white-space:pre-line
 
 // Body comes from our renderer only: md goes through noHtmlBlocks/noHtmlSpans, txt is escaped, html is textToHtml output.
 export function renderDocument(format: DocFormat, content: string): string {
+  if (format === "pdf") return "";
   if (format === "md") return page(Bun.markdown.html(content, { noHtmlBlocks: true, noHtmlSpans: true }));
   if (format === "html") return page(content);
   return page(`<pre>${escapeHtml(content)}</pre>`);

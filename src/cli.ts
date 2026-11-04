@@ -4,7 +4,7 @@ import { parseArgs } from "node:util";
 import { migrate, sql } from "./db";
 import { STATUTS, TYPES, oneOf, type InteractionType, type Statut } from "./logic";
 import { setup } from "./setup";
-import { addCompany, addContact, listCompanies, logInteraction, setStatut } from "./repo";
+import { addCompany, addContact, listCompanies, logInteraction, setStatut, writeFichier } from "./repo";
 
 const { values, positionals } = parseArgs({
   args: process.argv.slice(2),
@@ -99,11 +99,14 @@ try {
       ];
       for (const path of binaries) {
         const name = path.split("/").pop()!;
+        if (name.startsWith("doc-")) {
+          console.warn(`ignoré (préfixe doc- réservé): ${name}`);
+          continue;
+        }
         const file = Bun.file(path);
         if (!(await file.exists())) continue;
         const data = new Uint8Array(await file.arrayBuffer());
-        await sql`INSERT INTO fichiers (name, data) VALUES (${name}, ${data})
-          ON CONFLICT (name) DO UPDATE SET data = EXCLUDED.data`;
+        await writeFichier(name, data);
         console.log(`fichier: ${name}`);
       }
       break;

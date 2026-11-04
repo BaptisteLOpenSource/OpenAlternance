@@ -1,8 +1,8 @@
-import { ChevronLeft, ChevronRight, Download } from "lucide-preact";
+import { ChevronLeft, ChevronRight, Download, Trash2 } from "lucide-preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { CLOSING_STATUTS, LETTRE_STATUTS, type Profil, MOIS_MIN, escapeHtml, fileName, toIso } from "../logic";
 import type { Lettre } from "../repo";
-import { createLettre, lettreOf } from "./commands";
+import { createLettre, deleteLettre, lettreOf } from "./commands";
 import { Select } from "./menus";
 import { CopyButton, LETTRE_LABEL, LettreStatutControl, type Send, isOpen, lettreStatut, shortDate } from "./shared";
 import { type AppState, fetchLettre, fetchLogo } from "./store";
@@ -191,12 +191,12 @@ function LettreView({ lettre, send, onTemplate, profil, onDirty }: { lettre: Let
   }, [lettre.file]);
   useEffect(() => void fetchLogo().then(setLogo), []);
   const isTemplate = lettre.type === "template-lettre";
-  const editable = isTemplate || (lettre.type === "lettre" && !!lettre.entreprise);
+  const editable = isTemplate || lettre.type === "lettre";
   const dirty = !!data && draft !== data.content.trimEnd();
   useEffect(() => onDirty(dirty), [dirty]);
   const save = async () => {
     if (!dirty) return true;
-    const saved = isTemplate ? await send("template", { content: draft }) : await send("lettre", { entreprise: lettre.entreprise, content: draft });
+    const saved = isTemplate ? await send("template", { content: draft }) : await send("lettre", { file: lettre.file, content: draft });
     if (saved) load();
     return saved;
   };
@@ -205,6 +205,17 @@ function LettreView({ lettre, send, onTemplate, profil, onDirty }: { lettre: Let
     [data],
   );
   const title = fileName(profil.nom_fichier, { username: profil.username, entreprise: lettre.entreprise || lettre.file });
+  // Print names the PDF after the top document's title, not the iframe's <title>.
+  useEffect(() => {
+    const previous = document.title;
+    document.title = title;
+    return () => {
+      document.title = previous;
+    };
+  }, [title]);
+  const remove = async () => {
+    if (await deleteLettre(lettre, send)) location.hash = "#/lettres";
+  };
   return (
     <Card>
       <CardHeader>
@@ -219,7 +230,7 @@ function LettreView({ lettre, send, onTemplate, profil, onDirty }: { lettre: Let
             ))}
           </div>
           {dirty && <span role="status" class="text-xs text-warning">Non enregistré</span>}
-          {lettre.type === "lettre" && editable && <LettreStatutControl lettre={lettre} send={send} dirty={dirty} onSave={save} />}
+          {lettre.type === "lettre" && !!lettre.entreprise && <LettreStatutControl lettre={lettre} send={send} dirty={dirty} onSave={save} />}
           {view === "md" && editable && (
             <Button size="sm" disabled={!dirty} onClick={save}>
               Enregistrer
@@ -229,6 +240,11 @@ function LettreView({ lettre, send, onTemplate, profil, onDirty }: { lettre: Let
           {view !== "pdf" && !isTemplate && (
             <Button variant="outline" size="sm" onClick={onTemplate}>
               Template
+            </Button>
+          )}
+          {lettre.type === "lettre" && (
+            <Button variant="ghost" size="icon-sm" aria-label="Supprimer la lettre" onClick={remove}>
+              <Trash2 />
             </Button>
           )}
           <Button size="sm" disabled={!data} onClick={() => (view === "pdf" ? frame.current?.contentWindow?.postMessage("print", "*") : setView("pdf"))}>
@@ -346,7 +362,7 @@ export function LettresPage({ state, send, initial }: { state: AppState; send: S
             </TableHeader>
             <TableBody>
               {letters.map((l) => (
-                <TableRow key={l.file} class={cn("cursor-pointer", l.file === file && "bg-muted/50")} onClick={(e) => !(e.target as Element).closest("button, [popover]") && select(l.file)}>
+                <TableRow key={l.file} data-lettre={l.file} class={cn("cursor-pointer", l.file === file && "bg-muted/50")} onClick={(e) => !(e.target as Element).closest("button, [popover]") && select(l.file)}>
                   <TableCell>
                     <button
                       type="button"

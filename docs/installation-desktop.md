@@ -48,6 +48,25 @@ Au démarrage, l'app vérifie la dernière version publiée. Si elle est plus r�
 Le bouton de mise à jour télécharge le nouvel installeur, l'exécute en silencieux puis relance l'app.
 Si la vérification échoue (pas de connexion), l'app démarre normalement sans bannière.
 
+### Si la mise à jour bloque
+
+Pendant la mise à jour, l'app s'arrête quelques secondes. Si la fenêtre reste blanche ou affiche
+`ERR_CONNECTION_REFUSED` (ou `chunk-....js net::ERR_FAILED` dans la console) plus d'une minute :
+
+1. Ferme la fenêtre, termine `OpenAlternance.exe` dans le Gestionnaire des tâches s'il tourne encore,
+   puis relance OpenAlternance depuis le menu Démarrer.
+2. Toujours bloqué : télécharge `OpenAlternance-Setup.exe` depuis la
+   [dernière release](https://github.com/BaptisteLOpenSource/OpenAlternance/releases/latest) et lance-le.
+   Il s'installe par-dessus, sans toucher aux données.
+3. En dernier recours, réinstalle proprement en gardant tes données :
+   - **Mode local** : copie d'abord `%LOCALAPPDATA%\OpenAlternance\openalternance.db` ailleurs (par sécurité).
+     Désinstalle, et réponds **Non** à « Supprimer aussi vos données ». Réinstalle et choisis
+     **Sur ce PC uniquement** : l'assistant indique « base locale existante détectée » et l'app la reprend telle quelle.
+     Si tu avais quand même supprimé les données, remets ta copie à ce même chemin avant de lancer l'app.
+   - **Mode en ligne (Neon)** : tes données sont sur Neon, la désinstallation n'y touche jamais. Fais au besoin une
+     sauvegarde (voir plus bas), désinstalle, réinstalle et choisis **En ligne avec Neon**. Si tu as gardé tes données,
+     laisse le champ vide pour reprendre la clé enregistrée ; sinon recolle la chaîne `postgresql://...`.
+
 ## Sauvegarder (mode en ligne)
 
 Sur la page **Compte**, carte **Mon compte**, le bouton **Sauvegarder sur ce PC** copie la base Neon dans un fichier SQLite local :

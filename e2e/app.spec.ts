@@ -2,7 +2,7 @@ import { expect, test, type Page, type Route } from "@playwright/test";
 import { PROFIL_VIDE } from "../src/logic";
 
 // API mocked at the network edge: the UI is tested without a database.
-type Mock = { loggedIn: boolean; calls: { method: string; path: string; body: unknown }[] };
+type Mock = { loggedIn: boolean; calls: { method: string; path: string; body: unknown }[]; extra?: Record<string, unknown> };
 
 const company = {
   id: 1,
@@ -22,7 +22,7 @@ const company = {
   contacts: [],
 };
 
-const state = (lettres: unknown[] = []) => ({
+const state = (lettres: unknown[] = [], extra: Record<string, unknown> = {}) => ({
   today: "2026-10-13",
   companies: [company],
   contacts: [],
@@ -30,7 +30,9 @@ const state = (lettres: unknown[] = []) => ({
   lettres,
   pdfs: ["lettre-mgdis.pdf"],
   documents: [],
+  cv: false,
   profil: PROFIL_VIDE,
+  ...extra,
 });
 
 async function mockApi(page: Page, mock: Mock) {
@@ -49,7 +51,7 @@ async function mockApi(page: Page, mock: Mock) {
       return json({ ok: true });
     }
     if (!mock.loggedIn) return json({ error: "Connexion requise" }, 401);
-    if (path === "/api/state") return json(state([{ file: "mgdis.md", type: "lettre", entreprise: "MGDIS", statut: "brouillon" }]));
+    if (path === "/api/state") return json(state([{ file: "mgdis.md", type: "lettre", entreprise: "MGDIS", statut: "brouillon" }], mock.extra));
     if (path === "/api/mgdis.md" || path.startsWith("/api/lettres/")) {
       return json({ content: "# Bonjour", html: "<h1>Bonjour</h1>" });
     }
@@ -91,6 +93,22 @@ test("lettres: le PDF importé est listé et pointe vers /api/fichiers", async (
   await page.goto("/#/lettres");
   const link = page.getByRole("link", { name: "lettre-mgdis.pdf" });
   await expect(link).toHaveAttribute("href", "/api/fichiers/lettre-mgdis.pdf");
+});
+
+test("CV absent: formulaire d'envoi, pas d'iframe", async ({ page }) => {
+  const mock: Mock = { loggedIn: true, calls: [], extra: { cv: false } };
+  await mockApi(page, mock);
+  await page.goto("/#/cv");
+  await expect(page.locator('input[type=file][accept="application/pdf"]')).toBeVisible();
+  await expect(page.locator("iframe")).toHaveCount(0);
+});
+
+test("document PDF: visionneuse et téléchargement", async ({ page }) => {
+  const mock: Mock = { loggedIn: true, calls: [], extra: { documents: [{ name: "cv-2026.pdf", format: "pdf" }] } };
+  await mockApi(page, mock);
+  await page.goto("/#/documents/cv-2026.pdf");
+  await expect(page.locator('iframe[src="/api/fichiers/cv-2026.pdf"]')).toBeVisible();
+  await expect(page.getByRole("link", { name: "Télécharger" })).toHaveAttribute("download", "cv-2026.pdf");
 });
 
 test("XSS: les notes d'entreprise sont affichées en texte, aucun script exécuté", async ({ page }) => {

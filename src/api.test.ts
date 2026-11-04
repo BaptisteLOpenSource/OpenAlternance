@@ -102,6 +102,7 @@ test("hashes CSP = scripts inline du build (si dist existe)", () => {
 
 describe("base de test (TEST_DATABASE_URL)", () => {
   let api: typeof import("./api");
+  let repo: typeof import("./repo");
   let sql: typeof import("./db").sql;
   let cookie = "";
   const login = async (password: string) =>
@@ -110,6 +111,7 @@ describe("base de test (TEST_DATABASE_URL)", () => {
   beforeAll(async () => {
     ({ sql } = await import("./db"));
     api = await import("./api");
+    repo = await import("./repo");
     await (await import("./db")).migrate();
     await sql`DELETE FROM companies WHERE nom LIKE 'TEST-%'`;
     await sql`DELETE FROM login_attempts`;
@@ -287,6 +289,17 @@ describe("base de test (TEST_DATABASE_URL)", () => {
     expect(((await res.json()) as { error: string }).error).toMatch(/Document déjà existant/);
   });
 
+  test("document PDF: titre collisionnant avec un PDF de lettre -> 400, rien écrit", async () => {
+    await repo.writeFichier("lettre-xxx.pdf", new Uint8Array(Buffer.from("%PDF-1.4\n%lettre\n")));
+    const res = await auth("/api/document-pdf", { method: "POST", body: JSON.stringify({ titre: "lettre-xxx", data: PDF_B64 }) });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toMatch(/Document déjà existant/);
+    const state = (await (await auth("/api/state")).json()) as { documents: { name: string }[]; pdfs: string[] };
+    expect(state.documents.map((doc) => doc.name)).not.toContain("lettre-xxx.pdf");
+    expect(state.pdfs).toContain("lettre-xxx.pdf");
+    await sql`DELETE FROM fichiers WHERE name = 'lettre-xxx.pdf'`;
+  });
+
   test("document PDF: supprimer le document supprime le fichier", async () => {
     await auth("/api/document-supprimer", { method: "POST", body: JSON.stringify({ name: "docpdftest.pdf" }) });
     expect((await auth("/api/fichiers/docpdftest.pdf")).status).toBe(404);
@@ -302,7 +315,8 @@ describe("base de test (TEST_DATABASE_URL)", () => {
   test("CV: PDF -> servi, absent de PDF importés", async () => {
     const res = await auth("/api/cv", { method: "POST", body: JSON.stringify({ data: PDF_B64 }) });
     expect(res.status).toBe(200);
-    const state = (await res.json()) as { pdfs: string[] };
+    const state = (await res.json()) as { pdfs: string[]; cv: boolean };
+    expect(state.cv).toBe(true);
     expect(state.pdfs).not.toContain("cv.pdf");
     expect((await auth("/api/cv.pdf")).status).toBe(200);
   });

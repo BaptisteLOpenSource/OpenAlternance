@@ -33,6 +33,7 @@ import { CalendarPage, LettresPage } from "./pages";
 import { CommandPalette, type PaletteItem } from "./palette";
 import { ContextMenu, CustomizeMenu, MenuButton } from "./menus";
 import { DocumentsPage } from "./documents";
+import { CvPage } from "./cv";
 import { EntretiensPage } from "./entretiens";
 import { LoginPage } from "./login";
 import { ComptePage } from "./profil";
@@ -41,7 +42,7 @@ import { TodoPage } from "./todo";
 import { type DialogState, type Open, isTodo, readHidden, store, stored, writeHidden } from "./shared";
 import { type AppState, useStore } from "./store";
 import { ToastProvider, Tooltip } from "./fx";
-import { Button, Card, CardAction, CardHeader, CardTitle, Dialog, Input, cn } from "./ui";
+import { Button, Dialog, Input, cn } from "./ui";
 
 const NAV = [
   {
@@ -549,7 +550,7 @@ function App() {
           )}
           {desktop?.update && (
             <div role="status" class="flex items-center justify-between gap-3 rounded-lg border bg-muted px-4 py-3 text-sm">
-              {updating ? "Téléchargement de la mise à jour…" : `Nouvelle version ${desktop.update.version} disponible`}
+              {updating ? "Téléchargement de la mise à jour..." : `Nouvelle version ${desktop.update.version} disponible`}
               {!updating && (
                 <Button
                   size="sm"
@@ -581,22 +582,7 @@ function App() {
               {page.path === "calendrier" && <CalendarPage state={state} openCompany={openCompany} />}
               {page.path === "lettres" && <LettresPage state={state} send={send} initial={page.path === "lettres" && sub ? decodeURIComponent(sub) : undefined} />}
               {page.path === "documents" && <DocumentsPage state={state} send={send} selected={sub ? decodeURIComponent(sub) : undefined} />}
-              {page.path === "cv" && (
-                <Card class="overflow-hidden p-0">
-                  <CardHeader class="pt-6">
-                    <CardTitle>CV</CardTitle>
-                    <CardAction>
-                      <a href="/api/cv.pdf" target="_blank" rel="noopener" class="text-sm underline underline-offset-4">
-                        Ouvrir le CV
-                      </a>
-                    </CardAction>
-                  </CardHeader>
-                  {/* iOS Safari does not render PDF in iframes: the header link is the fallback. */}
-                  <iframe src="/api/cv.pdf" class="h-[70dvh] w-full md:h-[calc(100dvh-12rem)]" title="CV">
-                    <a href="/api/cv.pdf" target="_blank" rel="noopener">Ouvrir le CV</a>
-                  </iframe>
-                </Card>
-              )}
+              {page.path === "cv" && <CvPage state={state} send={send} />}
               <ActionDialog dialog={dialog} state={state} send={send} onClose={() => setDialog(null)} />
               {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={() => setMenu(null)} />}
               <Dialog open={palette} onClose={() => setPalette(false)} title="Commandes">

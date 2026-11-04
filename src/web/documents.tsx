@@ -7,7 +7,44 @@ import { Badge, Button, Card, CardAction, CardContent, CardDescription, CardHead
 
 type View = "apercu" | "edition";
 
-// Preview is the sandboxed render (no script). Edition only for md/txt; html comes from a PDF.
+const removeDocument = async (doc: DocumentRow, send: Send) => {
+  if (confirm(`Supprimer le document ${doc.name} ?`) && (await send("document-supprimer", { name: doc.name }))) location.hash = "#/documents";
+};
+
+// PDF shown by the browser's native viewer; no text is read, so nothing to edit here.
+function PdfView({ doc, send }: { doc: DocumentRow; send: Send }) {
+  const href = `/api/fichiers/${encodeURIComponent(doc.name)}`;
+  const convert = async () => {
+    if (await send("document-texte", { name: doc.name })) location.hash = `#/documents/${encodeURIComponent(doc.name.replace(/\.pdf$/, ".html"))}`;
+  };
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle class="text-base">{doc.name}</CardTitle>
+        <CardDescription>PDF</CardDescription>
+        <CardAction class="flex flex-wrap items-center gap-2">
+          <a href={href} download={doc.name} class="text-sm underline underline-offset-4">
+            Télécharger
+          </a>
+          <a href={href} target="_blank" rel="noopener" class="text-sm underline underline-offset-4">
+            Ouvrir
+          </a>
+          <Button variant="outline" size="sm" onClick={convert}>
+            Convertir en texte éditable
+          </Button>
+          <Button variant="ghost" size="icon-sm" aria-label="Supprimer le document" onClick={() => removeDocument(doc, send)}>
+            <Trash2 />
+          </Button>
+        </CardAction>
+      </CardHeader>
+      <CardContent>
+        <iframe title={`Aperçu ${doc.name}`} src={href} class="h-[70vh] w-full rounded-lg border" />
+      </CardContent>
+    </Card>
+  );
+}
+
+// Preview is the sandboxed render (no script). Edition only for md/txt; html is text extracted from a PDF.
 function DocumentView({ doc, send }: { doc: DocumentRow; send: Send }) {
   const [data, setData] = useState<{ content: string; html: string } | null>(null);
   const [draft, setDraft] = useState("");
@@ -28,9 +65,6 @@ function DocumentView({ doc, send }: { doc: DocumentRow; send: Send }) {
   const dirty = !!data && draft !== data.content;
   const save = async () => {
     if (dirty && (await send("document-modifier", { name: doc.name, content: draft }))) load();
-  };
-  const remove = async () => {
-    if (confirm(`Supprimer le document ${doc.name} ?`) && (await send("document-supprimer", { name: doc.name }))) location.hash = "#/documents";
   };
   return (
     <Card>
@@ -53,7 +87,7 @@ function DocumentView({ doc, send }: { doc: DocumentRow; send: Send }) {
               Enregistrer
             </Button>
           )}
-          <Button variant="ghost" size="icon-sm" aria-label="Supprimer le document" onClick={remove}>
+          <Button variant="ghost" size="icon-sm" aria-label="Supprimer le document" onClick={() => removeDocument(doc, send)}>
             <Trash2 />
           </Button>
         </CardAction>
@@ -93,7 +127,7 @@ export function DocumentsPage({ state, send, selected }: { state: AppState; send
       <Card>
         <CardHeader>
           <CardTitle>Documents</CardTitle>
-          <CardDescription>Stockés en base. Un PDF est converti en HTML (texte seul, mise en page perdue).</CardDescription>
+          <CardDescription>Stockés en base. Un PDF s'affiche tel quel ; « Convertir en texte éditable » en crée une copie HTML.</CardDescription>
         </CardHeader>
         <CardContent>
           {state.documents.length === 0 ? (
@@ -124,7 +158,7 @@ export function DocumentsPage({ state, send, selected }: { state: AppState; send
           )}
         </CardContent>
       </Card>
-      {doc && <DocumentView key={doc.name} doc={doc} send={send} />}
+      {doc && (doc.format === "pdf" ? <PdfView key={doc.name} doc={doc} send={send} /> : <DocumentView key={doc.name} doc={doc} send={send} />)}
     </div>
   );
 }

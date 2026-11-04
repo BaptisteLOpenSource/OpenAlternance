@@ -28,9 +28,9 @@ const ACTION: Partial<Record<Kind, Action>> = {
   "modifier-echange": "echange-modifier",
 };
 
-const MAX_PDF_BYTES = 3_000_000;
+export const MAX_PDF_BYTES = 3_000_000;
 
-const readBase64 = (file: File) =>
+export const readBase64 = (file: File) =>
   new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result).split(",")[1] ?? "");
@@ -68,7 +68,7 @@ function LettreForm({ state, send, company, onClose }: { state: AppState; send: 
   );
 }
 
-// Markdown or text typed here; PDF converted to HTML on the server.
+// Markdown or text typed here; PDF stored as is.
 function DocumentForm({ send, onClose }: { send: Send; onClose: () => void }) {
   const [format, setFormat] = useState<"pdf" | "md" | "txt">("pdf");
   const [error, setError] = useState<string | null>(null);
@@ -97,7 +97,7 @@ function DocumentForm({ send, onClose }: { send: Send; onClose: () => void }) {
             setError(null);
           }}
           options={[
-            { value: "pdf", label: "PDF (converti en HTML)" },
+            { value: "pdf", label: "PDF" },
             { value: "md", label: "Markdown" },
             { value: "txt", label: "Texte (TXT)" },
           ]}

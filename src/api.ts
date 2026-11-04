@@ -51,7 +51,7 @@ async function isAuthenticated(req: Request): Promise<boolean> {
 }
 
 const state = async () => {
-  const [companies, contacts, interactions, lettres, pdfs, documents, profil] = await Promise.all([
+  const [companies, contacts, interactions, lettres, pdfs, documents, profil, cv] = await Promise.all([
     repo.listCompanies(),
     repo.listContacts(),
     repo.listInteractions(),
@@ -59,8 +59,9 @@ const state = async () => {
     repo.listPdfs(),
     repo.listDocuments(),
     repo.getProfil(),
+    repo.hasFichier("cv.pdf"),
   ]);
-  return { today: today(), companies, contacts, interactions, lettres, pdfs, documents, profil };
+  return { today: today(), companies, contacts, interactions, lettres, pdfs, documents, profil, cv };
 };
 
 type Field = (name: string) => string;

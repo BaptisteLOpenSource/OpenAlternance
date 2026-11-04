@@ -10,6 +10,7 @@ export type AppState = {
   lettres: Lettre[];
   pdfs: string[];
   documents: DocumentRow[];
+  cv: boolean;
   profil: Profil;
 };
 
@@ -34,6 +35,8 @@ export type Action =
   | "lettre-supprimer"
   | "document"
   | "document-pdf"
+  | "document-texte"
+  | "cv"
   | "document-modifier"
   | "document-supprimer";
 

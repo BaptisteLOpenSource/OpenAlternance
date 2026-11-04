@@ -376,6 +376,11 @@ export async function writeFichier(name: string, data: Uint8Array): Promise<void
     ON CONFLICT (name) DO UPDATE SET data = EXCLUDED.data`;
 }
 
+export async function hasFichier(name: string): Promise<boolean> {
+  const [row] = await sql`SELECT 1 AS ok FROM fichiers WHERE name = ${name}`;
+  return row !== undefined;
+}
+
 export async function readFichier(name: string): Promise<Uint8Array | null> {
   const [row] = await sql<{ data: Uint8Array }[]>`SELECT data FROM fichiers WHERE name = ${name}`;
   return row?.data ?? null;

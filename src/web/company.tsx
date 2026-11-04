@@ -84,7 +84,7 @@ function LettreEditor({ company, lettre, send }: { company: CompanyRow; lettre: 
   const dirty = saved !== null && draft !== saved;
   const save = async () => {
     if (!dirty) return true;
-    const ok = await send("lettre", { entreprise: company.nom, content: draft });
+    const ok = await send("lettre", { file, content: draft });
     if (ok) setSaved(draft);
     return ok;
   };

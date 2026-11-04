@@ -67,6 +67,12 @@ const state = async () => {
 
 type Field = (name: string) => string;
 
+// Emptied is a valid save; a missing key is a client bug and must not wipe the text.
+const content = (body: Record<string, unknown>): string => {
+  if (typeof body.content !== "string") throw new Error("champ requis: content");
+  return body.content.trim();
+};
+
 // Relance optionnelle: champ présent mais vide = null (pas de relance); champ absent = défaut.
 const delaiField = (body: Record<string, unknown>, optional: (name: string) => string | undefined) =>
   "delai" in body ? (optional("delai") ?? null) : undefined;
@@ -134,11 +140,14 @@ const ACTIONS: Record<string, (required: Field, optional: (name: string) => stri
     await repo.addDocument(`${name.slice(0, -".pdf".length)}.html`, "html", await pdfToHtml(data));
   },
   cv: async (required) => repo.writeFichier("cv.pdf", pdfBytes(required("data"))),
-  "document-modifier": (required, optional) => repo.updateDocument(required("name"), optional("content") ?? ""),
+  "document-modifier": (required, _optional, body) => repo.updateDocument(required("name"), content(body)),
   "document-supprimer": (required) => repo.deleteDocument(required("name")),
   "entreprise-supprimer": (required) => repo.deleteCompany(required("entreprise")),
-  lettre: (required, optional) => repo.writeLettre(required("entreprise"), optional("content") ?? ""),
-  template: (_required, optional) => repo.writeTemplate(optional("content") ?? ""),
+  lettre: (required, optional, body) => {
+    const file = optional("file");
+    return file ? repo.writeLettreFile(file, content(body)) : repo.writeLettre(required("entreprise"), content(body));
+  },
+  template: (_required, _optional, body) => repo.writeTemplate(content(body)),
   "lettre-statut": (required, optional) =>
     repo.setLettreStatut(required("entreprise"), oneOf(required("statut"), LETTRE_STATUTS, "statut"), optional("date")),
   "lettre-supprimer": (required) => repo.deleteLettre(required("file")),

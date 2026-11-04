@@ -343,6 +343,11 @@ export async function writeLettre(companyNom: string, content: string): Promise<
   await upsertLettre(await lettreFile(companyNom), content);
 }
 
+export async function writeLettreFile(file: string, content: string): Promise<void> {
+  if (!SAFE_NAME.test(file) || file === TEMPLATE_FILE) throw new Error(`Lettre introuvable: ${file}`);
+  await upsertLettre(file, content);
+}
+
 export async function writeTemplate(content: string): Promise<void> {
   await upsertLettre(TEMPLATE_FILE, content);
 }

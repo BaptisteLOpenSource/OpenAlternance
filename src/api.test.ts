@@ -333,6 +333,24 @@ describe("base de test (TEST_DATABASE_URL)", () => {
     expect(lettre.status).toBe(200);
   });
 
+  test("lettre sans clé content -> 400, contenu intact", async () => {
+    await auth("/api/entreprise", { method: "POST", body: JSON.stringify({ nom: "TEST-sans-content" }) });
+    await auth("/api/lettre", { method: "POST", body: JSON.stringify({ entreprise: "TEST-sans-content", content: "texte" }) });
+    expect((await auth("/api/lettre", { method: "POST", body: JSON.stringify({ entreprise: "TEST-sans-content" }) })).status).toBe(400);
+    expect(((await (await auth("/api/lettres/test-sans-content.md")).json()) as { content: string }).content).toBe("texte\n");
+  });
+
+  test("lettre enregistrée par son fichier, même orpheline ou au frontmatter vidé", async () => {
+    await auth("/api/entreprise", { method: "POST", body: JSON.stringify({ nom: "TEST-par-fichier" }) });
+    await auth("/api/lettre", { method: "POST", body: JSON.stringify({ entreprise: "TEST-par-fichier", content: "a" }) });
+    const save = (file: string, content: string) => auth("/api/lettre", { method: "POST", body: JSON.stringify({ file, content }) });
+    expect((await save("test-par-fichier.md", "")).status).toBe(200);
+    expect((await save("test-par-fichier.md", "b")).status).toBe(200);
+    expect(((await (await auth("/api/lettres/test-par-fichier.md")).json()) as { content: string }).content).toBe("b\n");
+    expect((await save("_template.md", "x")).status).toBe(400);
+    expect((await save("../x.md", "x")).status).toBe(400);
+  });
+
   test("lettre orpheline (entreprise supprimée): supprimée par son fichier", async () => {
     await auth("/api/entreprise", { method: "POST", body: JSON.stringify({ nom: "TEST-orph-suppr" }) });
     await auth("/api/lettre", { method: "POST", body: JSON.stringify({ entreprise: "TEST-orph-suppr", content: "lettre" }) });

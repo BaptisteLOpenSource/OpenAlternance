@@ -191,12 +191,12 @@ function LettreView({ lettre, send, onTemplate, profil, onDirty }: { lettre: Let
   }, [lettre.file]);
   useEffect(() => void fetchLogo().then(setLogo), []);
   const isTemplate = lettre.type === "template-lettre";
-  const editable = isTemplate || (lettre.type === "lettre" && !!lettre.entreprise);
+  const editable = isTemplate || lettre.type === "lettre";
   const dirty = !!data && draft !== data.content.trimEnd();
   useEffect(() => onDirty(dirty), [dirty]);
   const save = async () => {
     if (!dirty) return true;
-    const saved = isTemplate ? await send("template", { content: draft }) : await send("lettre", { entreprise: lettre.entreprise, content: draft });
+    const saved = isTemplate ? await send("template", { content: draft }) : await send("lettre", { file: lettre.file, content: draft });
     if (saved) load();
     return saved;
   };

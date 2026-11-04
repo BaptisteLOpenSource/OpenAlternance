@@ -6,7 +6,7 @@ import { Readable } from "node:stream";
 
 const MAX_BYTES = 1_000_000;
 const TIMEOUT_MS = 5_000;
-const PRIVATE_V6 = /^(::|64:ff9b:|f[cd]|fe[89a-f]|ff)/i;
+const PRIVATE_V6 = /^(::|64:ff9b:|2002:|2001:0{0,4}:|f[cd]|fe[89a-f]|ff)/i;
 
 type Fetcher = (url: URL, address: string, signal: AbortSignal) => Promise<Response>;
 type Deps = { lookup?: (host: string) => Promise<string[]>; fetch?: Fetcher };
@@ -17,13 +17,14 @@ const lookupAll = async (host: string) => (await lookup(host, { all: true })).ma
 
 function isPrivate(address: string): boolean {
   if (isIP(address) === 6) return PRIVATE_V6.test(address);
-  const [a, b] = address.split(".").map(Number);
+  const [a, b, c] = address.split(".").map(Number);
   return (
     a === 0 || a === 10 || a === 127 || a >= 224 ||
     (a === 100 && b >= 64 && b <= 127) ||
     (a === 169 && b === 254) ||
     (a === 172 && b >= 16 && b <= 31) ||
     (a === 192 && b === 168) ||
+    (a === 192 && b === 0 && c <= 2 && c !== 1) ||
     (a === 198 && (b === 18 || b === 19))
   );
 }

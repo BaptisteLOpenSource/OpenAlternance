@@ -72,8 +72,12 @@ describe("en-têtes de sécurité (vercel.json)", () => {
     const script = csp.split(";").find((d) => d.trim().startsWith("script-src"))!;
     expect(script).not.toContain("unsafe-inline");
     expect(script).not.toContain("unsafe-eval");
-    expect(csp).toContain("frame-ancestors 'none'");
+    expect(csp).toContain("frame-ancestors 'self'");
     expect(csp).toContain("object-src 'none'");
+  });
+
+  test("iframes PDF même origine seulement", () => {
+    expect(headers["X-Frame-Options"]).toBe("SAMEORIGIN");
   });
 
   test("API non cacheable", () => {

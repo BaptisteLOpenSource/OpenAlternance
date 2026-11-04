@@ -3,7 +3,7 @@ import { dirname } from "node:path";
 import { schema, sql } from "./db";
 
 // FK order. sessions and login_attempts are transient, not user data.
-const TABLES = ["companies", "contacts", "interactions", "lettres", "documents", "fichiers", "profil"];
+const TABLES = ["companies", "agences", "postes", "contacts", "interactions", "lettres", "documents", "fichiers", "profil"];
 
 export async function backupToSqlite(target: string): Promise<{ rows: number }> {
   if (existsSync(target)) throw new Error("fichier existe déjà");

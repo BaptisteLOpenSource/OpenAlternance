@@ -1,5 +1,6 @@
 export const STATUTS = ["a_contacter", "contacte", "relance", "entretien", "offre", "refuse", "sans_reponse", "indisponible"] as const;
 export const TYPES = ["mail", "appel", "candidature", "relance", "entretien", "reponse", "reponse_favorable", "reponse_defavorable", "depot"] as const;
+export const SUIVI_TYPES = ["statut", "planif"] as const;
 export const MAIL_CANAUX = ["email", "formulaire", "linkedin"] as const;
 export const FICHE_TEXTES = ["secteur", "adresse", "code_postal", "domaine", "effectif", "note_google", "actualite", "annonce", "contact_cv"] as const;
 export const SUIVIS = ["suivi_linkedin", "suivi_insta", "suivi_facebook", "suivi_tiktok"] as const;
@@ -7,9 +8,11 @@ export const FICHE_EXTRA = [...FICHE_TEXTES, ...SUIVIS] as const;
 export type FicheExtra = (typeof FICHE_EXTRA)[number];
 export const LETTRE_STATUTS = ["brouillon", "envoyee"] as const;
 export type LettreStatut = (typeof LETTRE_STATUTS)[number];
+export const CONTRATS = ["alternance", "stage", "cdd", "cdi", "interim"] as const;
+export type Contrat = (typeof CONTRATS)[number];
 
 export type Statut = (typeof STATUTS)[number];
-export type InteractionType = (typeof TYPES)[number];
+export type InteractionType = (typeof TYPES)[number] | (typeof SUIVI_TYPES)[number];
 
 export const CLOSING_STATUTS: ReadonlySet<Statut> = new Set(["offre", "refuse", "sans_reponse", "indisponible"]);
 export const DOC_FORMATS = ["md", "txt", "html", "pdf"] as const;
@@ -168,18 +171,57 @@ export function statutAfter(type: InteractionType, current: Statut): Statut {
   return STATUT_BY_TYPE[type] ?? current;
 }
 
-// Rebuilds statut + prochaine relance from interactions, oldest first (after a delete).
-export function replayEchanges(
-  statut: Statut,
-  rows: { type: InteractionType; date: string; delai: number | null }[],
-): { statut: Statut; prochaine: string | null } {
-  let current: Statut = CLOSING_STATUTS.has(statut) ? statut : "a_contacter";
+export type Row = {
+  type: InteractionType;
+  date: string;
+  delai: number | null;
+  poste_id: number | null;
+  statut: Statut | null;
+  prochaine: string | null;
+};
+
+export type Etat = { statut: Statut; prochaine: string | null };
+
+// Manual statut/planif are events: replay is the only writer of the cache.
+export function replayEchanges(rows: Row[]): Etat {
+  let current: Statut = "a_contacter";
   let prochaine: string | null = null;
   for (const row of rows) {
-    current = statutAfter(row.type, current);
-    prochaine = relanceAfter(row.type, row.date, row.delai, prochaine, current);
+    if (row.type === "statut") {
+      current = row.statut!;
+      prochaine = relanceForStatut(current, prochaine, row.date);
+    } else if (row.type === "planif") {
+      prochaine = row.prochaine;
+    } else {
+      current = statutAfter(row.type, current);
+      prochaine = relanceAfter(row.type, row.date, row.delai, prochaine, current);
+    }
   }
   return { statut: current, prochaine: CLOSING_STATUTS.has(current) ? null : prochaine };
+}
+
+export function aggregateStatut(statuts: Statut[]): Statut {
+  const open = STATUTS.filter((s) => !CLOSING_STATUTS.has(s) && statuts.includes(s));
+  return open.at(-1) ?? STATUTS.find((s) => statuts.includes(s)) ?? "a_contacter";
+}
+
+// Empty tracks don't drive the aggregate (legacy poste = no row).
+export function replayTracks(rows: Row[], posteIds: number[]): { tracks: Map<number | null, Etat> } & Etat {
+  const ids: (number | null)[] = [null, ...posteIds];
+  const tracks = new Map<number | null, Etat>(ids.map((id) => [id, replayEchanges(rows.filter((row) => row.poste_id === id))]));
+  const active = ids.filter((id) => rows.some((row) => row.poste_id === id)).map((id) => tracks.get(id)!);
+  const pool = active.length ? active : [...tracks.values()];
+  const dates = pool.map((etat) => etat.prochaine).filter((date): date is string => date !== null);
+  return {
+    tracks,
+    statut: aggregateStatut(pool.map((etat) => etat.statut)),
+    prochaine: dates.length ? dates.reduce((a, b) => (b < a ? b : a)) : null,
+  };
+}
+
+export function carry(prochaine: string | null, statut: Statut, today: string): { prochaine: string | null; retard: number } {
+  if (CLOSING_STATUTS.has(statut) || prochaine === null || prochaine >= today) return { prochaine, retard: 0 };
+  return { prochaine: today, retard: daysBetween(prochaine, today) };
 }
 
 export function weekStart(iso: string): string {

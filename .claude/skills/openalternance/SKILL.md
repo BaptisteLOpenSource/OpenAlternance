@@ -20,6 +20,7 @@ bun run cli add "<Entreprise>" --ville <ville> --site <url> --notes "<texte>"
 bun run cli personne "<Entreprise>" --nom "<nom>" --role <role> --email <mail> --tel <tel>
 bun run cli contact "<Entreprise>" <type> --date YYYY-MM-DD --delai 7 --note "<texte>"
 bun run cli statut "<Entreprise>" <statut>
+bun run cli fusionner "<Source>" "<Cible>"   # merge source into cible, source deleted
 bun run cli sync-files
 ```
 

@@ -1,14 +1,14 @@
-import { type Profil, fillProfil, slug } from "../logic";
-import type { CompanyRow, Lettre } from "../repo";
-import { type Open, type Send, relanceEnvoyee } from "./shared";
-import { type AppState, fetchLettre } from "./store";
+import { fillProfil } from "../logic";
+import type { CompanyRow, Lettre, Poste } from "../repo";
+import { type Open, type Send, dueTrack, posteParam, relanceEnvoyee } from "./shared";
+import { type AppState, type CompanyEtat, fetchLettre } from "./store";
 
 export type Ctx = {
   state: AppState;
   send: Send;
   open: Open;
   reload: () => void;
-  company: CompanyRow | null;
+  company: CompanyEtat | null;
   lettre: Lettre | null;
 };
 
@@ -20,38 +20,46 @@ export type Command = {
   run: (ctx: Ctx) => unknown;
 };
 
-export const lettreOf = (company: CompanyRow, state: AppState) =>
-  state.lettres.find((l) => l.type === "lettre" && l.entreprise.toLowerCase() === company.nom.toLowerCase());
+// Letter of a poste; spontanée (no posteId) = letter without poste, or whose poste was deleted.
+export const lettreOf = (company: CompanyRow, state: AppState, posteId?: number) =>
+  state.lettres.find(
+    (l) =>
+      l.type === "lettre" &&
+      l.entreprise.toLowerCase() === company.nom.toLowerCase() &&
+      (l.poste !== undefined && state.postes.some((p) => p.id === l.poste) ? l.poste : undefined) === posteId,
+  );
 
 export const deleteLettre = async (lettre: Lettre, send: Send): Promise<boolean> =>
-  confirm(`Supprimer la lettre de ${lettre.entreprise || lettre.file} ?`) && (await send("lettre-supprimer", { file: lettre.file }));
+  confirm(`Supprimer la lettre de ${lettre.entreprise || lettre.file} ?`) && (await send("lettre-supprimer", { file: lettre.file })) !== false;
 
-export async function openLettre(company: CompanyRow, lettre: Lettre | null | undefined, send: Send, profil: Profil) {
+export async function openLettre(company: CompanyRow, lettre: Lettre | null | undefined, send: Send, state: AppState, poste?: Poste) {
   if (lettre) location.hash = `#/lettres/${encodeURIComponent(lettre.file)}`;
-  else await createLettre(company, send, profil);
+  else await createLettre(company, send, state, poste);
 }
 
-export async function createLettre(company: CompanyRow, send: Send, profil: Profil): Promise<string | null> {
+export async function createLettre(company: CompanyRow, send: Send, state: AppState, poste?: Poste): Promise<string | null> {
   const { content } = await fetchLettre("_template.md");
+  const ville = state.agences.find((a) => a.id === poste?.agence_id)?.ville ?? company.ville;
   const draft = fillProfil(
     content
       .replace("type: template-lettre", `type: lettre
 entreprise: ${company.nom}
-statut: brouillon`)
+${poste ? `poste: ${poste.id}\n` : ""}statut: brouillon`)
       .replaceAll("{{entreprise}}", company.nom)
-      .replaceAll("{{ville}}", company.ville || "{{ville}}")
-      .replaceAll("{{poste}}", company.poste || "{{poste}}")
+      .replaceAll("{{ville}}", ville || "{{ville}}")
+      .replaceAll("{{poste}}", poste?.intitule || company.poste || "{{poste}}")
+      .replaceAll("{{contrat}}", poste?.contrat ?? "alternance")
       .replaceAll("{{date}}", new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })),
-    profil,
+    state.profil,
   );
-  // same name as repo.writeLettre gives a new letter
-  const file = `${slug(company.nom)}.md`;
-  if (!(await send("lettre", { entreprise: company.nom, content: draft.trimEnd() }))) return null;
-  location.hash = `#/lettres/${file}`;
+  const file = await send("lettre", { entreprise: company.nom, content: draft.trimEnd(), ...posteParam(poste) });
+  if (typeof file !== "string") return null;
+  location.hash = `#/lettres/${encodeURIComponent(file)}`;
   return file;
 }
 
-const relance = ({ send, company }: Ctx) => company && relanceEnvoyee(send, company.nom);
+const relance = ({ send, company, state }: Ctx) => company && relanceEnvoyee(send, company.nom, dueTrack(state, company));
+const target = (state: AppState, company: CompanyEtat) => ({ entreprise: company.nom, ...posteParam(dueTrack(state, company)) });
 
 export const COMMANDS: Command[] = [
   { id: "reload", label: "Actualiser", scope: "all", pinned: true, run: ({ reload }) => reload() },
@@ -63,27 +71,28 @@ export const COMMANDS: Command[] = [
     id: "entretien",
     label: "Passer en entretien",
     scope: ["company"],
-    run: ({ send, company }) => company && send("statut", { entreprise: company.nom, statut: "entretien" }),
+    run: ({ send, company, state }) => company && send("statut", { ...target(state, company), statut: "entretien" }),
   },
   {
     id: "refus",
     label: "Passer en refusé",
     scope: ["company"],
-    run: ({ send, company }) => company && confirm(`Passer ${company.nom} en refusé ?`) && send("statut", { entreprise: company.nom, statut: "refuse" }),
+    run: ({ send, company, state }) => company && confirm(`Passer ${company.nom} en refusé ?`) && send("statut", { ...target(state, company), statut: "refuse" }),
   },
   {
     id: "sans-reponse",
     label: "Arrêter les relances",
     scope: ["company"],
-    run: ({ send, company }) =>
-      company && confirm(`Arrêter les relances de ${company.nom} (sans réponse) ?`) && send("sans-reponse", { entreprise: company.nom }),
+    run: ({ send, company, state }) =>
+      company && confirm(`Arrêter les relances de ${company.nom} (sans réponse) ?`) && send("sans-reponse", target(state, company)),
   },
   {
     id: "lettre",
     label: "Lettre de motivation",
     scope: ["company"],
-    run: ({ send, company, lettre, state }) => company && openLettre(company, lettre, send, state.profil),
+    run: ({ send, company, lettre, state }) => company && openLettre(company, lettre, send, state),
   },
+  { id: "fusionner", label: "Fusionner avec une autre entreprise", scope: ["company"], run: ({ open, company }) => company && open({ kind: "fusion", company: company.nom }) },
   {
     id: "lettre-statut",
     label: "Basculer brouillon / envoyée",

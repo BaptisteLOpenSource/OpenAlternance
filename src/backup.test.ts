@@ -13,6 +13,8 @@ const repo = await import("./src/repo");
 const { backupToSqlite } = await import("./src/backup");
 await migrate();
 await repo.addCompany("Acme", { ville: "Lyon" });
+const agence = await repo.addAgence("Acme", { ville: "Lyon" });
+await repo.addPoste("Acme", { intitule: "Dev", agenceId: agence });
 await repo.addContact("Acme", { nom: "Jean" });
 await repo.logInteraction("Acme", "appel", { note: "rappel" });
 await repo.writeLettre("Acme", "Bonjour");
@@ -33,13 +35,17 @@ test("backupToSqlite copies every table into a sqlite file", async () => {
     });
     const out = JSON.parse(await new Response(p.stdout).text());
     expect(await p.exited).toBe(0);
-    expect(out.result.rows).toBe(6);
+    expect(out.result.rows).toBe(8);
     expect(out.refused).toBe("fichier existe déjà");
 
     copy = new Bun.SQL("sqlite://" + target);
 
     const [company] = await copy`SELECT nom FROM companies`;
     expect(company.nom).toBe("Acme");
+    const [agenceRow] = await copy`SELECT ville FROM agences`;
+    expect(agenceRow.ville).toBe("Lyon");
+    const [poste] = await copy`SELECT intitule, agence_id FROM postes`;
+    expect(poste).toEqual({ intitule: "Dev", agence_id: 1 });
     const [interaction] = await copy`SELECT type, note FROM interactions`;
     expect(interaction).toEqual({ type: "appel", note: "rappel" });
     const [lettre] = await copy`SELECT content FROM lettres`;

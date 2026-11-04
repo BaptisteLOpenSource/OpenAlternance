@@ -1,27 +1,25 @@
 import { isUniqueViolation, sql } from "./db";
 import { fetchLogo } from "./logo";
 import {
-  CLOSING_STATUTS,
+  type Contrat,
   type DocFormat,
   type FicheExtra,
   type InteractionType,
   type Profil,
   PROFIL_VIDE,
   type Statut,
+  carry,
   delaiDays,
   fileName,
   isWebUrl,
   type LettreStatut,
   isoDate,
   parseFrontmatter,
-  relanceAfter,
-  relanceForStatut,
-  replayEchanges,
+  replayTracks,
+  type Row,
   setFrontmatter,
   slug,
-  statutAfter,
   today,
-  daysBetween,
 } from "./logic";
 
 const SAFE_NAME = /^[\w.-]+\.md$/;
@@ -30,7 +28,7 @@ const SAFE_DOCUMENT = /^[\w.-]+\.(md|txt|html|pdf)$/;
 export type DocumentRow = { name: string; format: DocFormat };
 const TEMPLATE_FILE = "_template.md";
 
-export type Lettre = { file: string; type: string; entreprise: string; statut: string; date_envoi?: string };
+export type Lettre = { file: string; type: string; entreprise: string; statut: string; date_envoi?: string; poste?: number };
 
 export type Company = {
   id: number;
@@ -61,6 +59,29 @@ export type Contact = {
   linkedin: string | null;
 };
 
+export type Agence = {
+  id: number;
+  company_id: number;
+  ville: string;
+  adresse: string | null;
+  code_postal: string | null;
+};
+
+export type Poste = {
+  id: number;
+  company_id: number;
+  intitule: string;
+  contrat: Contrat;
+  annonce: string | null;
+  publication: string | null;
+  candidatures: string | null;
+  reponses: string | null;
+  agence_id: number | null;
+};
+
+export type PosteFields = { intitule: string; contrat?: Contrat; annonce?: string; publication?: string; agenceId?: number };
+export type AgenceFields = { ville: string; adresse?: string; code_postal?: string };
+
 export type Interaction = {
   id: number;
   company_id: number;
@@ -68,6 +89,9 @@ export type Interaction = {
   date: string;
   note: string | null;
   delai: number | null;
+  poste_id: number | null;
+  statut: Statut | null;
+  prochaine: string | null;
 };
 
 export async function findCompany(nom: string): Promise<Company> {
@@ -101,33 +125,45 @@ export async function addContact(
   await sql`INSERT INTO contacts (company_id, nom, role, email, telephone, linkedin) VALUES (${company.id}, ${fields.nom}, ${fields.role ?? null}, ${fields.email ?? null}, ${fields.tel ?? null}, ${site(fields.linkedin, "linkedin")})`;
 }
 
+// Foreign keys alone accept another company's row: check ownership here.
+async function assertPoste(tx: typeof sql, companyId: number, posteId: number | null | undefined): Promise<void> {
+  if (posteId == null) return;
+  const [poste] = await tx`SELECT 1 AS ok FROM postes WHERE id = ${posteId} AND company_id = ${companyId}`;
+  if (!poste) throw new Error("Poste introuvable");
+}
+
+async function assertAgence(tx: typeof sql, companyId: number, agenceId: number | null | undefined): Promise<void> {
+  if (agenceId == null) return;
+  const [agence] = await tx`SELECT 1 AS ok FROM agences WHERE id = ${agenceId} AND company_id = ${companyId}`;
+  if (!agence) throw new Error("Agence introuvable");
+}
+
 export async function logInteraction(
   companyNom: string,
   type: InteractionType,
-  fields: { date?: string; delai?: string | null; note?: string },
+  fields: { date?: string; delai?: string | null; note?: string; posteId?: number; auto?: string },
 ): Promise<void> {
   const date = isoDate(fields.date ?? today());
   const delai = delaiDays(fields.delai);
   const company = await findCompany(companyNom);
-  const statut = statutAfter(type, company.statut);
-  const relance = relanceAfter(type, date, delai, company.prochaine_relance, statut);
   if (type === "relance") {
-    const [dup] = await sql`SELECT 1 FROM interactions WHERE company_id = ${company.id} AND type = 'relance' AND date = ${date}`;
-    if (dup) throw new Error(`relance déjà enregistrée le ${date} pour ${company.nom}`);
+    const sameDay = await sql<{ poste_id: number | null }[]>`SELECT poste_id FROM interactions WHERE company_id = ${company.id} AND type = 'relance' AND date = ${date}`;
+    if (sameDay.some((row) => row.poste_id === (fields.posteId ?? null))) throw new Error(`relance déjà enregistrée le ${date} pour ${company.nom}`);
   }
   await sql.begin(async (tx) => {
-    await tx`INSERT INTO interactions (company_id, type, date, note, delai) VALUES (${company.id}, ${type}, ${date}, ${fields.note ?? null}, ${delai})`;
-    await tx`UPDATE companies SET statut = ${statut}, prochaine_relance = ${relance}, retard = 0 WHERE id = ${company.id}`;
+    await assertPoste(tx, company.id, fields.posteId);
+    await tx`INSERT INTO interactions (company_id, type, date, note, delai, poste_id, auto) VALUES (${company.id}, ${type}, ${date}, ${fields.note ?? null}, ${delai}, ${fields.posteId ?? null}, ${fields.auto ?? null})`;
+    await replayCompany(tx, company.id);
   });
 }
 
-// Rebuilds statut and relance from the company's interactions (after any edit or delete of one).
 async function replayCompany(tx: typeof sql, companyId: number): Promise<void> {
-  const [company] = await tx<Company[]>`SELECT * FROM companies WHERE id = ${companyId}`;
-  const rows = await tx<{ type: InteractionType; date: string; delai: number | null }[]>`
-    SELECT type, date, delai FROM interactions WHERE company_id = ${companyId} ORDER BY date, id`;
-  const { statut, prochaine } = replayEchanges(company.statut, rows);
-  await tx`UPDATE companies SET statut = ${statut}, prochaine_relance = ${prochaine} WHERE id = ${companyId}`;
+  const postes = await tx<{ id: number }[]>`SELECT id FROM postes WHERE company_id = ${companyId}`;
+  const rows = await tx<Row[]>`
+    SELECT type, date, delai, poste_id, statut, prochaine FROM interactions WHERE company_id = ${companyId} ORDER BY date, id`;
+  const replay = replayTracks(rows, postes.map((poste) => poste.id));
+  const relance = carry(replay.prochaine, replay.statut, today());
+  await tx`UPDATE companies SET statut = ${replay.statut}, prochaine_relance = ${relance.prochaine}, retard = ${relance.retard} WHERE id = ${companyId}`;
 }
 
 export async function deleteInteraction(id: number): Promise<void> {
@@ -140,20 +176,76 @@ export async function deleteInteraction(id: number): Promise<void> {
 
 export async function updateInteraction(
   id: number,
-  fields: { type: InteractionType; date: string; delai: number | null; note?: string },
+  fields: { type: InteractionType; date: string; delai: number | null; note?: string; posteId?: number },
 ): Promise<void> {
   await sql.begin(async (tx) => {
     const [updated] = await tx<{ company_id: number }[]>`
-      UPDATE interactions SET type = ${fields.type}, date = ${fields.date}, delai = ${fields.delai}, note = ${fields.note ?? null}
+      UPDATE interactions SET type = ${fields.type}, date = ${fields.date}, delai = ${fields.delai}, note = ${fields.note ?? null}, poste_id = ${fields.posteId ?? null}
       WHERE id = ${id} RETURNING company_id`;
     if (!updated) throw new Error(`échange introuvable: ${id}`);
+    await assertPoste(tx, updated.company_id, fields.posteId);
     await replayCompany(tx, updated.company_id);
   });
 }
 
+// Table is a literal from this module, never user input.
+async function deleteById(table: "contacts" | "agences", id: number, label: string): Promise<void> {
+  const [deleted] = await sql<{ id: number }[]>`DELETE FROM ${sql(table)} WHERE id = ${id} RETURNING id`;
+  if (!deleted) throw new Error(`${label} introuvable: ${id}`);
+}
+
 export async function deleteContact(id: number): Promise<void> {
-  const [deleted] = await sql<{ id: number }[]>`DELETE FROM contacts WHERE id = ${id} RETURNING id`;
-  if (!deleted) throw new Error(`contact introuvable: ${id}`);
+  await deleteById("contacts", id, "contact");
+}
+
+export async function addPoste(companyNom: string, fields: PosteFields): Promise<number> {
+  const company = await findCompany(companyNom);
+  await assertAgence(sql, company.id, fields.agenceId);
+  const [row] = await sql<{ id: number }[]>`INSERT INTO postes (company_id, intitule, contrat, annonce, publication, agence_id)
+    VALUES (${company.id}, ${fields.intitule}, ${fields.contrat ?? "alternance"}, ${site(fields.annonce, "annonce")}, ${fields.publication ?? null}, ${fields.agenceId ?? null})
+    RETURNING id`;
+  return row.id;
+}
+
+export async function updatePoste(id: number, fields: PosteFields): Promise<void> {
+  const [poste] = await sql<{ company_id: number }[]>`SELECT company_id FROM postes WHERE id = ${id}`;
+  if (!poste) throw new Error(`poste introuvable: ${id}`);
+  await assertAgence(sql, poste.company_id, fields.agenceId);
+  await sql`UPDATE postes SET intitule = ${fields.intitule}, contrat = ${fields.contrat ?? "alternance"}, annonce = ${site(fields.annonce, "annonce")},
+    publication = ${fields.publication ?? null}, agence_id = ${fields.agenceId ?? null} WHERE id = ${id}`;
+}
+
+// ON DELETE SET NULL moves its rows to the spontanée track: replay.
+export async function deletePoste(id: number): Promise<void> {
+  await sql.begin(async (tx) => {
+    const [deleted] = await tx<{ company_id: number }[]>`DELETE FROM postes WHERE id = ${id} RETURNING company_id`;
+    if (!deleted) throw new Error(`poste introuvable: ${id}`);
+    await replayCompany(tx, deleted.company_id);
+  });
+}
+
+export async function listPostes(): Promise<Poste[]> {
+  return sql<Poste[]>`SELECT id, company_id, intitule, contrat, annonce, publication, candidatures, reponses, agence_id FROM postes ORDER BY intitule`;
+}
+
+export async function addAgence(companyNom: string, fields: AgenceFields): Promise<number> {
+  const company = await findCompany(companyNom);
+  const [row] = await sql<{ id: number }[]>`INSERT INTO agences (company_id, ville, adresse, code_postal)
+    VALUES (${company.id}, ${fields.ville}, ${fields.adresse ?? null}, ${fields.code_postal ?? null}) RETURNING id`;
+  return row.id;
+}
+
+export async function updateAgence(id: number, fields: AgenceFields): Promise<void> {
+  const [updated] = await sql<{ id: number }[]>`
+    UPDATE agences SET ville = ${fields.ville}, adresse = ${fields.adresse ?? null}, code_postal = ${fields.code_postal ?? null}
+    WHERE id = ${id} RETURNING id`;
+  if (!updated) throw new Error(`agence introuvable: ${id}`);
+}
+
+export const deleteAgence = (id: number) => deleteById("agences", id, "agence");
+
+export async function listAgences(): Promise<Agence[]> {
+  return sql<Agence[]>`SELECT id, company_id, ville, adresse, code_postal FROM agences ORDER BY ville`;
 }
 
 export async function updateContact(
@@ -175,22 +267,32 @@ export async function deleteCompany(companyNom: string): Promise<void> {
   });
 }
 
-export async function setStatut(companyNom: string, statut: Statut): Promise<void> {
+type Suivi = { type: "statut"; statut: Statut } | { type: "planif"; prochaine: string | null };
+
+// Manual change = event row, cache replayed from history.
+async function recordSuivi(companyNom: string, posteId: number | undefined, suivi: Suivi): Promise<void> {
   const company = await findCompany(companyNom);
-  const relance = relanceForStatut(statut, company.prochaine_relance, today());
-  await sql`UPDATE companies SET statut = ${statut}, prochaine_relance = ${relance}, retard = 0 WHERE id = ${company.id}`;
+  await sql.begin(async (tx) => {
+    await assertPoste(tx, company.id, posteId);
+    const statut = suivi.type === "statut" ? suivi.statut : null;
+    const prochaine = suivi.type === "planif" ? suivi.prochaine : null;
+    await tx`INSERT INTO interactions (company_id, type, date, poste_id, statut, prochaine) VALUES (${company.id}, ${suivi.type}, ${today()}, ${posteId ?? null}, ${statut}, ${prochaine})`;
+    await replayCompany(tx, company.id);
+  });
+}
+
+export async function setStatut(companyNom: string, statut: Statut, posteId?: number): Promise<void> {
+  await recordSuivi(companyNom, posteId, { type: "statut", statut });
 }
 
 // Annuler la relance prévue: stop chasing, keep the statut.
-export async function closeRelance(companyNom: string): Promise<void> {
-  const company = await findCompany(companyNom);
-  await sql`UPDATE companies SET prochaine_relance = NULL, retard = 0 WHERE id = ${company.id}`;
+export async function closeRelance(companyNom: string, posteId?: number): Promise<void> {
+  await recordSuivi(companyNom, posteId, { type: "planif", prochaine: null });
 }
 
 // Décaler / modifier la relance prévue à la main: la date saisie remplace le retard.
-export async function setRelance(companyNom: string, date: string): Promise<void> {
-  const company = await findCompany(companyNom);
-  await sql`UPDATE companies SET prochaine_relance = ${isoDate(date)}, retard = 0 WHERE id = ${company.id}`;
+export async function setRelance(companyNom: string, date: string, posteId?: number): Promise<void> {
+  await recordSuivi(companyNom, posteId, { type: "planif", prochaine: isoDate(date) });
 }
 
 // Relance due before today and not handled: pulled to today, retard counts the days carried.
@@ -198,11 +300,11 @@ export async function setRelance(companyNom: string, date: string): Promise<void
 export async function reporterRelances(): Promise<void> {
   const now = today();
   await sql.begin(async (tx) => {
-    const due = await tx<{ id: number; prochaine_relance: string; statut: string }[]>`
+    const due = await tx<{ id: number; prochaine_relance: string; statut: Statut }[]>`
       SELECT id, prochaine_relance, statut FROM companies WHERE prochaine_relance < ${now}`;
     for (const r of due) {
-      if ((CLOSING_STATUTS as ReadonlySet<string>).has(r.statut)) continue;
-      await tx`UPDATE companies SET retard = retard + ${daysBetween(r.prochaine_relance, now)}, prochaine_relance = ${now} WHERE id = ${r.id} AND prochaine_relance = ${r.prochaine_relance}`;
+      const moved = carry(r.prochaine_relance, r.statut, now);
+      await tx`UPDATE companies SET retard = retard + ${moved.retard}, prochaine_relance = ${moved.prochaine} WHERE id = ${r.id} AND prochaine_relance = ${r.prochaine_relance}`;
     }
   });
 }
@@ -279,17 +381,24 @@ export async function updateCompany(companyNom: string, fields: Fiche): Promise<
     WHERE id = ${company.id}`;
 }
 
+const lettresDe = async (companyNom: string) =>
+  (await listLettres()).filter((l) => l.type === "lettre" && l.entreprise.toLowerCase() === companyNom.toLowerCase());
+
+async function setLettresEntreprise(tx: typeof sql, letters: Lettre[], nom: string): Promise<void> {
+  for (const letter of letters) {
+    const content = await readLettre(letter.file);
+    await tx`UPDATE lettres SET content = ${setFrontmatter(content ?? "", { entreprise: nom })} WHERE file = ${letter.file}`;
+  }
+}
+
 // Letter follows the rename: its frontmatter names the company, and letters are matched by that name.
 export async function renameCompany(companyNom: string, nom: string): Promise<void> {
   const company = await findCompany(companyNom);
-  const letter = (await listLettres()).find((l) => l.type === "lettre" && l.entreprise.toLowerCase() === company.nom.toLowerCase());
+  const letters = await lettresDe(company.nom);
   try {
     await sql.begin(async (tx) => {
       await tx`UPDATE companies SET nom = ${nom} WHERE id = ${company.id}`;
-      if (letter) {
-        const content = await readLettre(letter.file);
-        await tx`UPDATE lettres SET content = ${setFrontmatter(content ?? "", { entreprise: nom })} WHERE file = ${letter.file}`;
-      }
+      await setLettresEntreprise(tx, letters, nom);
     });
   } catch (error) {
     if (isUniqueViolation(error)) throw new Error(`Entreprise déjà existante: ${nom}`);
@@ -297,11 +406,38 @@ export async function renameCompany(companyNom: string, nom: string): Promise<vo
   }
 }
 
-export type CompanyRow = Company & { derniere_interaction: string | null; contacts: string[] };
+// Source siège becomes an agence of target. Relance is replayed from the merged history.
+export async function mergeCompanies(sourceNom: string, targetNom: string): Promise<void> {
+  const source = await findCompany(sourceNom);
+  const target = await findCompany(targetNom);
+  if (source.id === target.id) throw new Error("Fusion impossible: même entreprise");
+  const letters = await lettresDe(source.nom);
+  await sql.begin(async (tx) => {
+    if (source.ville)
+      await tx`INSERT INTO agences (company_id, ville, adresse, code_postal) VALUES (${target.id}, ${source.ville}, ${source.adresse}, ${source.code_postal})`;
+    await tx`UPDATE contacts SET company_id = ${target.id} WHERE company_id = ${source.id}`;
+    await tx`UPDATE interactions SET company_id = ${target.id} WHERE company_id = ${source.id}`;
+    await tx`UPDATE postes SET company_id = ${target.id} WHERE company_id = ${source.id}`;
+    await tx`UPDATE agences SET company_id = ${target.id} WHERE company_id = ${source.id}`;
+    const notes = [target.notes, source.notes].filter(Boolean).join("\n\n") || null;
+    await tx`UPDATE companies SET notes = ${notes} WHERE id = ${target.id}`;
+    await setLettresEntreprise(tx, letters, target.nom);
+    await replayCompany(tx, target.id);
+    await tx`DELETE FROM fichiers WHERE name = ${`logo-${source.id}`}`;
+    await tx`DELETE FROM companies WHERE id = ${source.id}`;
+  });
+}
+
+// Lean on purpose: /api/state ships every company on each write.
+export type CompanyRow = Pick<Company, "id" | "nom" | "ville" | "site" | "statut" | "prochaine_relance" | "retard" | "logo" | "poste"> & {
+  derniere_interaction: string | null;
+  contacts: string[];
+};
 
 export async function listCompanies(): Promise<CompanyRow[]> {
-  const companies = await sql<(Company & { derniere_interaction: string | null })[]>`
-    SELECT c.*, (SELECT MAX(date) FROM interactions i WHERE i.company_id = c.id) AS derniere_interaction
+  const companies = await sql<Omit<CompanyRow, "contacts">[]>`
+    SELECT c.id, c.nom, c.ville, c.site, c.statut, c.prochaine_relance, c.retard, c.logo, c.poste,
+      (SELECT MAX(date) FROM interactions i WHERE i.company_id = c.id) AS derniere_interaction
     FROM companies c ORDER BY c.nom`;
   const contacts = await listContacts();
   return companies.map((company) => ({
@@ -310,13 +446,22 @@ export async function listCompanies(): Promise<CompanyRow[]> {
   }));
 }
 
+export async function listFiches(): Promise<Company[]> {
+  return sql<Company[]>`SELECT * FROM companies ORDER BY nom`;
+}
+
+export async function getFiche(id: number): Promise<Company | null> {
+  const [company] = await sql<Company[]>`SELECT * FROM companies WHERE id = ${id}`;
+  return company ?? null;
+}
+
 export async function listContacts(): Promise<Contact[]> {
   return sql<Contact[]>`SELECT id, company_id, nom, role, email, telephone, linkedin FROM contacts ORDER BY nom`;
 }
 
 export async function listInteractions(): Promise<(Interaction & { nom: string })[]> {
   return sql<(Interaction & { nom: string })[]>`
-    SELECT i.id, i.company_id, i.type, i.date, i.note, i.delai, c.nom
+    SELECT i.id, i.company_id, i.type, i.date, i.note, i.delai, i.poste_id, i.statut, i.prochaine, c.nom
     FROM interactions i JOIN companies c ON c.id = i.company_id ORDER BY i.date`;
 }
 
@@ -325,7 +470,14 @@ const toLettre = (file: string, content: string): Lettre => {
   // a dated letter without statut was sent: derive it instead of showing brouillon
   const statut = fields.statut || (fields.date_envoi ? "envoyee" : "");
   // legacy rows stored "YYYY-MM-DD HH:MM": keep the date part, the UI parses it as ISO
-  return { file, type: fields.type ?? "", entreprise: fields.entreprise ?? "", statut, date_envoi: fields.date_envoi?.slice(0, 10) };
+  return {
+    file,
+    type: fields.type ?? "",
+    entreprise: fields.entreprise ?? "",
+    statut,
+    date_envoi: fields.date_envoi?.slice(0, 10),
+    poste: fields.poste ? Number(fields.poste) : undefined,
+  };
 };
 
 export async function listLettres(): Promise<Lettre[]> {
@@ -339,18 +491,34 @@ export async function readLettre(file: string): Promise<string | null> {
   return row?.content ?? null;
 }
 
+// Letter whose poste was deleted reads as spontanée.
+const posteOf = (letter: Lettre, postes: Set<number>) => (letter.poste !== undefined && postes.has(letter.poste) ? letter.poste : undefined);
+
 // letters outlive deleted companies: match by name before findCompany
-async function lettreFile(companyNom: string): Promise<string> {
-  const existing = (await listLettres()).find((l) => l.type === "lettre" && l.entreprise.toLowerCase() === companyNom.toLowerCase());
-  return existing?.file ?? `${slug((await findCompany(companyNom)).nom)}.md`;
+async function lettreFile(companyNom: string, posteId?: number): Promise<string> {
+  const letters = await lettresDe(companyNom);
+  const postes = new Set(
+    (await sql<{ id: number }[]>`SELECT p.id FROM postes p JOIN companies c ON c.id = p.company_id WHERE lower(c.nom) = lower(${companyNom})`).map((p) => p.id),
+  );
+  const existing = letters.find((l) => posteOf(l, postes) === posteId);
+  if (existing) return existing.file;
+  const company = await findCompany(companyNom);
+  if (posteId === undefined) return `${slug(company.nom)}.md`;
+  const [poste] = await sql<{ intitule: string }[]>`SELECT intitule FROM postes WHERE id = ${posteId} AND company_id = ${company.id}`;
+  if (!poste) throw new Error("Poste introuvable");
+  const base = `${slug(company.nom)}-${slug(poste.intitule)}`;
+  const [taken] = await sql`SELECT 1 AS ok FROM lettres WHERE file = ${`${base}.md`}`;
+  return taken ? `${base}-${posteId}.md` : `${base}.md`;
 }
 
 const upsertLettre = (file: string, content: string) =>
   sql`INSERT INTO lettres (file, content) VALUES (${file}, ${`${content}\n`})
     ON CONFLICT (file) DO UPDATE SET content = EXCLUDED.content`;
 
-export async function writeLettre(companyNom: string, content: string): Promise<void> {
-  await upsertLettre(await lettreFile(companyNom), content);
+export async function writeLettre(companyNom: string, content: string, posteId?: number): Promise<string> {
+  const file = await lettreFile(companyNom, posteId);
+  await upsertLettre(file, posteId === undefined ? content : setFrontmatter(content, { poste: String(posteId) }));
+  return file;
 }
 
 export async function writeLettreFile(file: string, content: string): Promise<void> {
@@ -365,21 +533,31 @@ export async function writeTemplate(content: string): Promise<void> {
 }
 
 // Envoyee stamps date_envoi (default today); brouillon clears it.
-export async function setLettreStatut(companyNom: string, statut: LettreStatut, date?: string): Promise<void> {
-  const file = await lettreFile(companyNom);
+export async function setLettreStatut(companyNom: string, statut: LettreStatut, date?: string, posteId?: number): Promise<void> {
+  const file = await lettreFile(companyNom, posteId);
   const content = await readLettre(file);
   if (content === null) throw new Error(`Lettre introuvable: ${companyNom}`);
   const envoi = statut === "envoyee" ? isoDate(date ?? today()) : "";
   await sql`UPDATE lettres SET content = ${setFrontmatter(content, { statut, date_envoi: envoi })} WHERE file = ${file}`;
-  if (statut === "envoyee") await logCandidature(companyNom, envoi);
+  if (statut === "envoyee") await logCandidature(companyNom, envoi, file, posteId);
+  else await unlogCandidature(file);
 }
 
-// Sent letter = candidature: logged once, so the company turns contacte with its relance.
-async function logCandidature(companyNom: string, date: string): Promise<void> {
+// Sent letter = candidature: logged once per poste, tagged with its letter so brouillon can undo it.
+async function logCandidature(companyNom: string, date: string, file: string, posteId?: number): Promise<void> {
   const [company] = await sql<{ id: number }[]>`SELECT id FROM companies WHERE lower(nom) = lower(${companyNom})`;
   if (!company) return;
-  const [logged] = await sql`SELECT 1 FROM interactions WHERE company_id = ${company.id} AND type = 'candidature'`;
-  if (!logged) await logInteraction(companyNom, "candidature", { date });
+  const logged = await sql<{ poste_id: number | null }[]>`SELECT poste_id FROM interactions WHERE company_id = ${company.id} AND type = 'candidature'`;
+  if (!logged.some((row) => row.poste_id === (posteId ?? null)))
+    await logInteraction(companyNom, "candidature", { date, auto: `lettre:${file}`, posteId });
+}
+
+// Hand-logged candidatures carry no tag, so they survive.
+async function unlogCandidature(file: string): Promise<void> {
+  await sql.begin(async (tx) => {
+    const removed = await tx<{ company_id: number }[]>`DELETE FROM interactions WHERE auto = ${`lettre:${file}`} RETURNING company_id`;
+    for (const { company_id } of removed) await replayCompany(tx, company_id);
+  });
 }
 
 // Keyed by file: a letter outlives its company, so the name cannot find it.

@@ -76,6 +76,12 @@ bun test
 - Types d'échange : `mail`, `appel`, `candidature`, `relance`, `entretien`, `reponse`, `depot` (CV déposé en physique, statut `contacte`).
 - Statuts : `a_contacter`, `contacte`, `relance`, `entretien`, `offre`, `refuse`.
 - `offre` et `refuse` figent le statut et suppriment la relance.
+- Postes : une entreprise en porte plusieurs (intitulé, contrat `alternance`, `stage`, `cdd`, `cdi` ou `interim`, annonce, agence).
+  Chaque poste a son statut et sa relance, calculés depuis l'historique. Un échange peut viser un poste, sinon il est spontané.
+  Une lettre de motivation par poste.
+- Agences : lieux autres que le siège, rattachables à un poste.
+- Historique : les changements de statut et de relance y figurent (`Statut -> Entretien`, `Relances arrêtées`).
+- Fusion : sur la fiche entreprise, clic droit > `Fusionner avec une autre entreprise`. Contacts, échanges, postes et lettres passent dans la cible.
 
 ### ✅ Todo
 

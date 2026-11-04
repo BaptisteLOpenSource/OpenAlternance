@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { CompanyRow } from "../repo";
+import type { Company } from "../repo";
 import { type Send, sendFiche } from "./shared";
 
 test("sendFiche garde les champs d'un envoi encore en vol", async () => {
@@ -9,7 +9,7 @@ test("sendFiche garde les champs d'un envoi encore en vol", async () => {
     sent.push(fields);
     return new Promise((resolve) => resolvers.push(resolve));
   };
-  const company = { nom: "Acme", mail_objet: "", mail_canal: "email" } as unknown as CompanyRow;
+  const company = { nom: "Acme", mail_objet: "", mail_canal: "email" } as unknown as Company;
 
   const first = sendFiche(send, company, { mail_objet: "Candidature" });
   const second = sendFiche(send, company, { mail_canal: "linkedin" });

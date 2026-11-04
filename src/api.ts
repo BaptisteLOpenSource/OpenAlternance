@@ -1,6 +1,6 @@
 import { SESSION_DAYS, clearSessionCookie, digest, newSessionToken, passwordMatches, sessionCookie, sessionTokenFrom } from "./auth";
 import { sql } from "./db";
-import { FICHE_TEXTES, LETTRE_STATUTS, MAIL_CANAUX, NOM_FICHIER_DEFAUT, STATUTS, SUIVIS, TYPES, delaiDays, documentFile, isoAgo, isoDate, oneOf, stripFrontmatter, today } from "./logic";
+import { CONTRATS, FICHE_TEXTES, LETTRE_STATUTS, MAIL_CANAUX, NOM_FICHIER_DEFAUT, STATUTS, SUIVIS, TYPES, delaiDays, documentFile, isoAgo, isoDate, oneOf, replayTracks, stripFrontmatter, today } from "./logic";
 import { MAX_PDF_BASE64, pdfToHtml, renderDocument } from "./documents";
 import { logoType } from "./logo";
 import * as repo from "./repo";
@@ -50,10 +50,24 @@ async function isAuthenticated(req: Request): Promise<boolean> {
   return session !== undefined;
 }
 
+// spontanee: the track the header StatutSelect writes, distinct from the aggregate statut.
+const avecEtats = (companies: repo.CompanyRow[], postes: repo.Poste[], interactions: repo.Interaction[]) => {
+  const tracks = new Map(companies.map((c) => [
+    c.id,
+    replayTracks(interactions.filter((i) => i.company_id === c.id), postes.filter((p) => p.company_id === c.id).map((p) => p.id)).tracks,
+  ]));
+  return {
+    companies: companies.map((c) => ({ ...c, spontanee: tracks.get(c.id)!.get(null)! })),
+    postes: postes.map((p) => ({ ...p, etat: tracks.get(p.company_id)!.get(p.id)! })),
+  };
+};
+
 const state = async () => {
-  const [companies, contacts, interactions, lettres, pdfs, documents, profil, cv] = await Promise.all([
+  const [companies, contacts, postes, agences, interactions, lettres, pdfs, documents, profil, cv] = await Promise.all([
     repo.listCompanies(),
     repo.listContacts(),
+    repo.listPostes(),
+    repo.listAgences(),
     repo.listInteractions(),
     repo.listLettres(),
     repo.listPdfs(),
@@ -61,10 +75,33 @@ const state = async () => {
     repo.getProfil(),
     repo.hasFichier("cv.pdf"),
   ]);
-  return { today: today(), companies, contacts, interactions, lettres, pdfs, documents, profil, cv };
+  return { today: today(), ...avecEtats(companies, postes, interactions), contacts, agences, interactions, lettres, pdfs, documents, profil, cv };
 };
 
 type Field = (name: string) => string;
+type Optional = (name: string) => string | undefined;
+
+const refId = (optional: Optional, name: string): number | undefined => {
+  const value = optional(name);
+  return value ? Number(value) : undefined;
+};
+
+const posteFields = (required: Field, optional: Optional) => {
+  const contrat = optional("contrat");
+  return {
+    intitule: required("intitule"),
+    contrat: contrat ? oneOf(contrat, CONTRATS, "contrat") : undefined,
+    annonce: optional("annonce"),
+    publication: optional("publication"),
+    agenceId: refId(optional, "agence"),
+  };
+};
+
+const agenceFields = (required: Field, optional: Optional) => ({
+  ville: required("ville"),
+  adresse: optional("adresse"),
+  code_postal: optional("code_postal"),
+});
 
 // Emptied is a valid save; a missing key is a client bug and must not wipe the text.
 const content = (body: Record<string, unknown>): string => {
@@ -76,7 +113,7 @@ const content = (body: Record<string, unknown>): string => {
 const delaiField = (body: Record<string, unknown>, optional: (name: string) => string | undefined) =>
   "delai" in body ? (optional("delai") ?? null) : undefined;
 
-const ACTIONS: Record<string, (required: Field, optional: (name: string) => string | undefined, body: Record<string, unknown>) => Promise<void>> = {
+const ACTIONS: Record<string, (required: Field, optional: Optional, body: Record<string, unknown>) => Promise<unknown>> = {
   entreprise: (required, optional) =>
     repo.addCompany(required("nom"), { ville: optional("ville"), site: optional("site"), notes: optional("notes") }),
   personne: (required, optional) =>
@@ -92,7 +129,14 @@ const ACTIONS: Record<string, (required: Field, optional: (name: string) => stri
       date: optional("date"),
       delai: delaiField(body, optional),
       note: optional("note"),
+      posteId: refId(optional, "poste"),
     }),
+  poste: (required, optional) => repo.addPoste(required("entreprise"), posteFields(required, optional)),
+  "poste-modifier": (required, optional) => repo.updatePoste(Number(required("id")), posteFields(required, optional)),
+  "poste-supprimer": (required) => repo.deletePoste(Number(required("id"))),
+  agence: (required, optional) => repo.addAgence(required("entreprise"), agenceFields(required, optional)),
+  "agence-modifier": (required, optional) => repo.updateAgence(Number(required("id")), agenceFields(required, optional)),
+  "agence-supprimer": (required) => repo.deleteAgence(Number(required("id"))),
   fiche: (required, optional) =>
     repo.updateCompany(required("entreprise"), {
       ville: optional("ville"),
@@ -116,6 +160,7 @@ const ACTIONS: Record<string, (required: Field, optional: (name: string) => stri
       date: isoDate(required("date")),
       delai: delaiDays(delaiField(body, optional)),
       note: optional("note"),
+      posteId: refId(optional, "poste"),
     }),
   "personne-supprimer": (required) => repo.deleteContact(Number(required("id"))),
   "personne-modifier": (required, optional) =>
@@ -127,6 +172,7 @@ const ACTIONS: Record<string, (required: Field, optional: (name: string) => stri
       linkedin: optional("linkedin"),
     }),
   "entreprise-renommer": (required) => repo.renameCompany(required("entreprise"), required("nom")),
+  "entreprise-fusionner": (required) => repo.mergeCompanies(required("source"), required("cible")),
   document: (required, optional) => {
     const format = oneOf(required("format"), ["md", "txt"] as const, "format");
     return repo.addDocument(documentFile(required("titre"), format), format, optional("content") ?? "");
@@ -144,15 +190,15 @@ const ACTIONS: Record<string, (required: Field, optional: (name: string) => stri
   "entreprise-supprimer": (required) => repo.deleteCompany(required("entreprise")),
   lettre: (required, optional, body) => {
     const file = optional("file");
-    return file ? repo.writeLettreFile(file, content(body)) : repo.writeLettre(required("entreprise"), content(body));
+    return file ? repo.writeLettreFile(file, content(body)) : repo.writeLettre(required("entreprise"), content(body), refId(optional, "poste"));
   },
   template: (_required, _optional, body) => repo.writeTemplate(content(body)),
   "lettre-statut": (required, optional) =>
-    repo.setLettreStatut(required("entreprise"), oneOf(required("statut"), LETTRE_STATUTS, "statut"), optional("date")),
+    repo.setLettreStatut(required("entreprise"), oneOf(required("statut"), LETTRE_STATUTS, "statut"), optional("date"), refId(optional, "poste")),
   "lettre-supprimer": (required) => repo.deleteLettre(required("file")),
-  statut: (required) => repo.setStatut(required("entreprise"), oneOf(required("statut"), STATUTS, "statut")),
-  "sans-reponse": (required) => repo.closeRelance(required("entreprise")),
-  "relance-date": (required) => repo.setRelance(required("entreprise"), required("date")),
+  statut: (required, optional) => repo.setStatut(required("entreprise"), oneOf(required("statut"), STATUTS, "statut"), refId(optional, "poste")),
+  "sans-reponse": (required, optional) => repo.closeRelance(required("entreprise"), refId(optional, "poste")),
+  "relance-date": (required, optional) => repo.setRelance(required("entreprise"), required("date"), refId(optional, "poste")),
   profil: (required, optional) =>
     repo.setProfil({
       username: required("username"),
@@ -201,6 +247,13 @@ async function file(name: string, type: string, headers: Record<string, string> 
 
 async function handleGet(path: string): Promise<Response> {
   if (path === "/api/state") return json(await state());
+  if (path === "/api/fiches") return json(await repo.listFiches());
+  if (path.startsWith("/api/fiches/")) {
+    const id = path.slice("/api/fiches/".length);
+    if (!/^\d+$/.test(id)) return notFound();
+    const fiche = await repo.getFiche(Number(id));
+    return fiche ? json(fiche) : notFound();
+  }
   if (path === "/api/cv.pdf") return file("cv.pdf", "application/pdf");
   if (path === "/api/logo.png") return file("logo.png", "image/png");
   if (path === "/api/logo.svg") return file("logo.svg", "image/svg+xml", SVG_HEADERS);
@@ -243,8 +296,10 @@ async function handlePost(req: Request, path: string): Promise<Response> {
       if (!value) throw new Error(`champ requis: ${name}`);
       return value;
     };
-    await ACTIONS[name](required, optional, fields);
-    return json(await state());
+    const created = await ACTIONS[name](required, optional, fields);
+    const next = await state();
+    // Only lettre creation returns a file name: the client opens it (server suffixes it on collision).
+    return json(typeof created === "string" ? { ...next, file: created } : next);
   } catch (error) {
     return json({ error: error instanceof Error ? error.message : String(error) }, 400);
   }

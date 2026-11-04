@@ -121,6 +121,7 @@ describe("base de test (TEST_DATABASE_URL)", () => {
     await sql`DELETE FROM companies WHERE nom LIKE 'TEST-%'`;
     await sql`DELETE FROM login_attempts`;
     await sql`DELETE FROM sessions`;
+    await sql`DELETE FROM fichiers WHERE name = 'cv.pdf'`;
     const res = await api.handle(new Request(`${ORIGIN}/api/login`, { method: "POST", headers: { origin: ORIGIN }, body: JSON.stringify({ password: "mot-de-passe-de-test-ok" }) }));
     cookie = res.headers.get("set-cookie")!.split(";")[0]!;
   });
@@ -525,6 +526,36 @@ describe("base de test (TEST_DATABASE_URL)", () => {
     expect(state.companies.find((c) => c.nom === nom)?.statut).toBe("contacte");
     expect(state.interactions.filter((i) => i.nom === nom && i.type === "candidature")).toHaveLength(1);
     await auth("/api/entreprise-supprimer", { method: "POST", body: JSON.stringify({ entreprise: nom }) });
+  });
+
+  // Base after migrate() only, as the desktop app runs it (no CLI setup).
+  test("parcours sur base neuve: entreprise, contact, échange, lettre depuis le template, envoi", async () => {
+    const nom = "TEST-parcours";
+    const post = (action: string, body: object) => auth(`/api/${action}`, { method: "POST", body: JSON.stringify(body) });
+    expect((await post("entreprise", { nom, ville: "Lyon" })).status).toBe(200);
+    expect((await post("personne", { entreprise: nom, nom: "TEST-Recruteur" })).status).toBe(200);
+    expect((await post("echange", { entreprise: nom, type: "appel", note: "premier contact" })).status).toBe(200);
+
+    const template = await auth("/api/lettres/_template.md");
+    expect(template.status).toBe(200);
+    const { content } = (await template.json()) as { content: string };
+    expect(content).toContain("type: template-lettre");
+    const draft = content.replace("type: template-lettre", `type: lettre\nentreprise: ${nom}\nstatut: brouillon`);
+    expect((await post("lettre", { entreprise: nom, content: draft })).status).toBe(200);
+    expect((await post("lettre-statut", { entreprise: nom, statut: "envoyee", date: "2026-11-04" })).status).toBe(200);
+
+    const state = (await (await auth("/api/state")).json()) as {
+      companies: { nom: string; statut: string }[];
+      contacts: { nom: string }[];
+      interactions: { nom: string; type: string }[];
+      lettres: { file: string; entreprise: string; statut: string }[];
+    };
+    const lettre = state.lettres.find((l) => l.entreprise === nom);
+    expect(state.companies.find((c) => c.nom === nom)?.statut).toBe("contacte");
+    expect(state.contacts.some((k) => k.nom === "TEST-Recruteur")).toBe(true);
+    expect(state.interactions.filter((i) => i.nom === nom).map((i) => i.type).sort()).toEqual(["appel", "candidature"]);
+    expect(lettre?.statut).toBe("envoyee");
+    await post("lettre-supprimer", { file: lettre?.file });
   });
 
   test("entreprise-supprimer inconnue -> 400", async () => {

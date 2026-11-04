@@ -1,5 +1,6 @@
 import { chmodSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import template from "../lettres/_template.md" with { type: "text" };
 import { CLOSING_STATUTS, type Row, type Statut, replayTracks, today } from "./logic";
 
 export type Dialect = "postgres" | "sqlite";
@@ -39,8 +40,8 @@ if (dialect === "sqlite") {
 
 // Bun.SQL reports SQLite unique/primary-key hits with their own codes, not 23505.
 export function isUniqueViolation(error: unknown): boolean {
-  const code = (error as { code?: string }).code ?? "";
-  return /^(23505|SQLITE_CONSTRAINT_(UNIQUE|PRIMARYKEY))$/.test(code);
+  const { code, errno } = error as { code?: string; errno?: string };
+  return errno === "23505" || /^(23505|SQLITE_CONSTRAINT_(UNIQUE|PRIMARYKEY))$/.test(code ?? "");
 }
 
 const INTERACTION_COLUMNS = [
@@ -196,6 +197,8 @@ async function reconcileHistory(): Promise<void> {
 
 export async function migrate(): Promise<void> {
   for (const statement of schema(dialect)) await sql.unsafe(statement);
+  // Desktop never runs setup(): the letter template must ship with the schema.
+  await sql`INSERT INTO lettres (file, content) VALUES ('_template.md', ${template}) ON CONFLICT (file) DO NOTHING`;
   for (const column of INTERACTION_COLUMNS) await addColumn("interactions", column);
   await sql`INSERT INTO postes (company_id, intitule, annonce, publication, candidatures, reponses)
     SELECT id, poste, annonce, publication, candidatures, reponses FROM companies

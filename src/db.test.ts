@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, existsSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { bootError, resolveDb, schema } from "./db";
+import { bootError, isUniqueViolation, resolveDb, schema } from "./db";
 
 test("resolveDb picks the adapter from the url scheme", () => {
   expect(resolveDb(undefined)).toEqual({ dialect: "sqlite", url: "sqlite://data/openalternance.db" });
@@ -71,6 +71,13 @@ test.skipIf(process.platform === "win32")("sqlite file is private to the owner",
   expect(await p.exited).toBe(0);
   expect(statSync(file).mode & 0o777).toBe(0o600);
   expect(statSync(join(dir, "nested")).mode & 0o777).toBe(0o700);
+});
+
+// Bun.SQL Postgres errors carry the SQLSTATE in errno, code is generic.
+test("isUniqueViolation reconnaît SQLite et Postgres (Bun)", () => {
+  expect(isUniqueViolation({ code: "SQLITE_CONSTRAINT_PRIMARYKEY" })).toBe(true);
+  expect(isUniqueViolation({ code: "ERR_POSTGRES_SERVER_ERROR", errno: "23505" })).toBe(true);
+  expect(isUniqueViolation({ code: "ERR_POSTGRES_SERVER_ERROR", errno: "23503" })).toBe(false);
 });
 
 test("migrate réconcilie un statut posé à la main une seule fois", async () => {

@@ -35,7 +35,7 @@ test("backupToSqlite copies every table into a sqlite file", async () => {
     });
     const out = JSON.parse(await new Response(p.stdout).text());
     expect(await p.exited).toBe(0);
-    expect(out.result.rows).toBe(8);
+    expect(out.result.rows).toBe(9);
     expect(out.refused).toBe("fichier existe déjà");
 
     copy = new Bun.SQL("sqlite://" + target);
@@ -48,7 +48,7 @@ test("backupToSqlite copies every table into a sqlite file", async () => {
     expect(poste).toEqual({ intitule: "Dev", agence_id: 1 });
     const [interaction] = await copy`SELECT type, note FROM interactions`;
     expect(interaction).toEqual({ type: "appel", note: "rappel" });
-    const [lettre] = await copy`SELECT content FROM lettres`;
+    const [lettre] = await copy`SELECT content FROM lettres WHERE file <> '_template.md'`;
     expect(lettre.content).toContain("Bonjour");
     const [profil] = await copy`SELECT username FROM profil`;
     expect(profil.username).toBe("Jean");

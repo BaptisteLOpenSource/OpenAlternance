@@ -1,7 +1,7 @@
 import type { ComponentChildren } from "preact";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, cn } from "./ui";
 
-export type Datum = { label: string; value: number };
+export type Datum = { label: string; value: number; color?: string };
 
 const niceMax = (max: number) => (max <= 4 ? 4 : Math.ceil(max / 4) * 4);
 
@@ -70,7 +70,7 @@ export function BarList({ data, onSelect }: { data: Datum[]; onSelect?: (label: 
           <>
             <span class="truncate text-muted-foreground">{d.label}</span>
             <div class="h-2 overflow-hidden rounded-full bg-muted">
-              <div class="h-full rounded-full bg-chart" style={{ width: `${(d.value / max) * 100}%` }} />
+              <div class={cn("h-full rounded-full", d.color ?? "bg-chart")} style={{ width: `${(d.value / max) * 100}%` }} />
             </div>
             <span class="text-right font-medium tabular-nums">{d.value}</span>
           </>

@@ -33,15 +33,16 @@ import { CalendarPage, LettresPage } from "./pages";
 import { CommandPalette, type PaletteItem } from "./palette";
 import { ContextMenu, CustomizeMenu, MenuButton } from "./menus";
 import { DocumentsPage } from "./documents";
+import { CvPage } from "./cv";
 import { EntretiensPage } from "./entretiens";
 import { LoginPage } from "./login";
 import { ComptePage } from "./profil";
 import { TableurPage } from "./tableur";
 import { TodoPage } from "./todo";
 import { type DialogState, type Open, isTodo, readHidden, store, stored, writeHidden } from "./shared";
-import { type AppState, useStore } from "./store";
+import { type AppState, fetchPalette, useStore } from "./store";
 import { ToastProvider, Tooltip } from "./fx";
-import { Button, Card, CardAction, CardHeader, CardTitle, Dialog, Input, cn } from "./ui";
+import { Button, Dialog, Input, cn } from "./ui";
 
 const NAV = [
   {
@@ -73,6 +74,17 @@ const NAV = [
     items: [{ path: "compte", label: "Mon compte", icon: UserRound }],
   },
 ] as const;
+
+// Company page: the two blobs take the logo's colors, default glow when there is none.
+function CompanyGlow({ id, logo }: { id: number; logo: string }) {
+  const [palette, setPalette] = useState<string[]>([]);
+  useEffect(() => {
+    setPalette([]);
+    void fetchPalette(id, logo).then(setPalette);
+  }, [id, logo]);
+  if (palette.length === 0) return GLOW.entreprises.map((cls) => <div class={cls} />);
+  return palette.slice(0, 2).map((color, i) => <div class={GLOW.entreprises[i]} style={{ background: color, opacity: 0.1 }} />);
+}
 
 // Blurred corner blobs per page; never centered. Keys = page path, "" = dashboard.
 const GLOW: Record<string, string[]> = {
@@ -408,7 +420,7 @@ function App() {
   const [companiesFilter, setCompaniesFilter] = useState<Statut | "">("");
   const [dialog, setDialog] = useState<DialogState>(null);
   const [palette, setPalette] = useState(false);
-  const [menu, setMenu] = useState<{ x: number; y: number; companyId: number | null } | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number; companyId: number | null; lettre?: string } | null>(null);
   const [hidden, setHidden] = useState(readHidden);
   const [base, sub] = route.split("/");
   const page = PAGES.find((p) => p.path === base) ?? PAGES[0];
@@ -440,7 +452,13 @@ function App() {
     setHidden(next);
   };
   const runner = (run: (c: Ctx) => unknown) => () => ctx && run(ctx);
-  const menuCtx = ctx && menu?.companyId != null ? { ...ctx, company: ctx.state.companies.find((c) => c.id === menu.companyId) ?? null } : ctx;
+  const menuCtx = ctx && menu
+    ? {
+        ...ctx,
+        company: menu.companyId != null ? (ctx.state.companies.find((c) => c.id === menu.companyId) ?? null) : ctx.company,
+        lettre: menu.lettre != null ? (ctx.state.lettres.find((l) => l.file === menu.lettre) ?? null) : ctx.lettre,
+      }
+    : ctx;
   const menuRunner = (run: (c: Ctx) => unknown) => () => menuCtx && run(menuCtx);
   const menuItems = forScope(scope)
     .filter((c) => c.pinned || !hidden.includes(c.id))
@@ -456,7 +474,8 @@ function App() {
     if (!ctx || (e.target as Element).closest("input, textarea, select, [contenteditable]")) return;
     e.preventDefault();
     const row = (e.target as Element).closest("[data-company]");
-    setMenu({ x: e.clientX, y: e.clientY, companyId: row ? Number(row.getAttribute("data-company")) : null });
+    const lettreRow = (e.target as Element).closest("[data-lettre]");
+    setMenu({ x: e.clientX, y: e.clientY, companyId: row ? Number(row.getAttribute("data-company")) : null, lettre: lettreRow?.getAttribute("data-lettre") ?? undefined });
   };
 
   useEffect(() => {
@@ -511,7 +530,7 @@ function App() {
         aria-hidden
         class="pointer-events-none fixed inset-0 -z-10 overflow-hidden transition-opacity duration-700 starting:opacity-0 motion-reduce:transition-none"
       >
-        {GLOW[page.path]?.map((cls) => <div class={cls} />)}
+        {companyId !== null ? <CompanyGlow id={companyId} logo={company?.logo ?? ""} /> : GLOW[page.path]?.map((cls) => <div class={cls} />)}
       </div>
       <Sidebar
         route={page.path}
@@ -549,7 +568,7 @@ function App() {
           )}
           {desktop?.update && (
             <div role="status" class="flex items-center justify-between gap-3 rounded-lg border bg-muted px-4 py-3 text-sm">
-              {updating ? "Téléchargement de la mise à jour…" : `Nouvelle version ${desktop.update.version} disponible`}
+              {updating ? "Téléchargement de la mise à jour..." : `Nouvelle version ${desktop.update.version} disponible`}
               {!updating && (
                 <Button
                   size="sm"
@@ -581,22 +600,7 @@ function App() {
               {page.path === "calendrier" && <CalendarPage state={state} openCompany={openCompany} />}
               {page.path === "lettres" && <LettresPage state={state} send={send} initial={page.path === "lettres" && sub ? decodeURIComponent(sub) : undefined} />}
               {page.path === "documents" && <DocumentsPage state={state} send={send} selected={sub ? decodeURIComponent(sub) : undefined} />}
-              {page.path === "cv" && (
-                <Card class="overflow-hidden p-0">
-                  <CardHeader class="pt-6">
-                    <CardTitle>CV</CardTitle>
-                    <CardAction>
-                      <a href="/api/cv.pdf" target="_blank" rel="noopener" class="text-sm underline underline-offset-4">
-                        Ouvrir le CV
-                      </a>
-                    </CardAction>
-                  </CardHeader>
-                  {/* iOS Safari does not render PDF in iframes: the header link is the fallback. */}
-                  <iframe src="/api/cv.pdf" class="h-[70dvh] w-full md:h-[calc(100dvh-12rem)]" title="CV">
-                    <a href="/api/cv.pdf" target="_blank" rel="noopener">Ouvrir le CV</a>
-                  </iframe>
-                </Card>
-              )}
+              {page.path === "cv" && <CvPage state={state} send={send} />}
               <ActionDialog dialog={dialog} state={state} send={send} onClose={() => setDialog(null)} />
               {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={() => setMenu(null)} />}
               <Dialog open={palette} onClose={() => setPalette(false)} title="Commandes">

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "preact/hooks";
-import type { Profil } from "../logic";
+import { type Profil, logoPalette } from "../logic";
 import type { CompanyRow, Contact, DocumentRow, Interaction, Lettre } from "../repo";
 
 export type AppState = {
@@ -10,6 +10,7 @@ export type AppState = {
   lettres: Lettre[];
   pdfs: string[];
   documents: DocumentRow[];
+  cv: boolean;
   profil: Profil;
 };
 
@@ -34,6 +35,8 @@ export type Action =
   | "lettre-supprimer"
   | "document"
   | "document-pdf"
+  | "document-texte"
+  | "cv"
   | "document-modifier"
   | "document-supprimer";
 
@@ -57,6 +60,29 @@ const post = (path: string, fields: unknown) =>
 
 export const fetchDocument = (name: string) =>
   request<{ format: string; content: string; html: string }>(`/api/documents/${encodeURIComponent(name)}`);
+
+const palettes = new Map<string, Promise<string[]>>();
+export const fetchPalette = (companyId: number, logo: string): Promise<string[]> => {
+  if (!logo) return Promise.resolve([]);
+  const key = `${companyId}:${logo}`;
+  let palette = palettes.get(key);
+  if (!palette) palettes.set(key, (palette = decodePalette(companyId)));
+  return palette;
+};
+const decodePalette = (companyId: number) =>
+  new Promise<string[]>((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = canvas.height = 64;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return resolve([]);
+      ctx.drawImage(img, 0, 0, 64, 64);
+      resolve(logoPalette(ctx.getImageData(0, 0, 64, 64).data));
+    };
+    img.onerror = () => resolve([]);
+    img.src = `/api/logos/${companyId}`;
+  });
 
 export const fetchLettre = (file: string) =>
   request<{ content: string; html: string }>(`/api/lettres/${encodeURIComponent(file)}`);

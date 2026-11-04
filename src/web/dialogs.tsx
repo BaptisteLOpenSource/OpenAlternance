@@ -2,7 +2,7 @@ import { useState } from "preact/hooks";
 import { CLOSING_STATUTS, TYPES } from "../logic";
 import { createLettre, lettreOf } from "./commands";
 import { ProfilForm } from "./profil";
-import { type DialogState, type Send, formFields } from "./shared";
+import { type DialogState, ECHANGE, EchangeBadge, type Send, formFields } from "./shared";
 import type { Action, AppState } from "./store";
 import { Select } from "./menus";
 import { Button, Dialog, Input, Label, Textarea } from "./ui";
@@ -28,9 +28,9 @@ const ACTION: Partial<Record<Kind, Action>> = {
   "modifier-echange": "echange-modifier",
 };
 
-const MAX_PDF_BYTES = 3_000_000;
+export const MAX_PDF_BYTES = 3_000_000;
 
-const readBase64 = (file: File) =>
+export const readBase64 = (file: File) =>
   new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result).split(",")[1] ?? "");
@@ -68,7 +68,7 @@ function LettreForm({ state, send, company, onClose }: { state: AppState; send: 
   );
 }
 
-// Markdown or text typed here; PDF converted to HTML on the server.
+// Markdown or text typed here; PDF stored as is.
 function DocumentForm({ send, onClose }: { send: Send; onClose: () => void }) {
   const [format, setFormat] = useState<"pdf" | "md" | "txt">("pdf");
   const [error, setError] = useState<string | null>(null);
@@ -97,7 +97,7 @@ function DocumentForm({ send, onClose }: { send: Send; onClose: () => void }) {
             setError(null);
           }}
           options={[
-            { value: "pdf", label: "PDF (converti en HTML)" },
+            { value: "pdf", label: "PDF" },
             { value: "md", label: "Markdown" },
             { value: "txt", label: "Texte (TXT)" },
           ]}
@@ -177,7 +177,7 @@ export function ActionDialog({ dialog, state, send, onClose }: { dialog: DialogS
               {companySelect}
               <div class="grid gap-4 sm:grid-cols-3">
                 <Label label="Type">
-                  <Select name="type" value={dialog?.type} options={TYPES} />
+                  <Select name="type" value={dialog?.type} options={TYPES.map((t) => ({ value: t, label: ECHANGE[t].label }))} renderOption={(t) => <EchangeBadge type={t} />} />
                 </Label>
                 <Label label="Date"><Input name="date" type="date" value={state.today} /></Label>
                 <Label label="Relance (j, vide = aucune)"><Input name="delai" type="number" min={1} value={7} /></Label>
@@ -190,7 +190,7 @@ export function ActionDialog({ dialog, state, send, onClose }: { dialog: DialogS
               <input type="hidden" name="id" value={echange.id} />
               <div class="grid gap-4 sm:grid-cols-3">
                 <Label label="Type">
-                  <Select name="type" value={echange.type} options={TYPES} />
+                  <Select name="type" value={echange.type} options={TYPES.map((t) => ({ value: t, label: ECHANGE[t].label }))} renderOption={(t) => <EchangeBadge type={t} />} />
                 </Label>
                 <Label label="Date"><Input name="date" type="date" value={echange.date} /></Label>
                 <Label label="Relance (j, vide = aucune)"><Input name="delai" type="number" min={1} value={echange.delai ?? ""} /></Label>

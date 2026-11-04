@@ -53,7 +53,8 @@ const { isTrustedRequest } = await import("../api");
 const { backupToSqlite } = await import("../backup");
 
 const mode = process.env.DATABASE_URL?.startsWith("postgres") ? "online" : "local";
-let update: { version: string; url: string } | null = null;
+// Awaited by /info: the window can load before GitHub answers.
+let update: Promise<{ version: string; url: string } | null> = Promise.resolve(null);
 let last = Date.now();
 
 const json = (body: unknown, status = 200) => Response.json(body, { status });
@@ -65,7 +66,7 @@ function stamp(): string {
 
 async function desktopRoute(req: Request, path: string): Promise<Response> {
   if (req.method === "GET" && path === "/api/desktop/info") {
-    return json({ mode, version: pkg.version, update });
+    return json({ mode, version: pkg.version, update: await update });
   }
   if (req.method === "POST" && path === "/api/desktop/backup") {
     if (!isTrustedRequest(req)) return json({ error: "Forbidden" }, 403);
@@ -76,8 +77,9 @@ async function desktopRoute(req: Request, path: string): Promise<Response> {
   }
   if (req.method === "POST" && path === "/api/desktop/update") {
     if (!isTrustedRequest(req)) return json({ error: "Forbidden" }, 403);
-    if (!update) return json({ error: "aucune mise à jour" }, 400);
-    const file = await downloadUpdate(update.url, tmpdir());
+    const latest = await update;
+    if (!latest) return json({ error: "aucune mise à jour" }, 400);
+    const file = await downloadUpdate(latest.url, tmpdir());
     // ponytail: fixed delay lets the reply flush; ack-based is exact.
     setTimeout(() => {
       try {
@@ -141,7 +143,8 @@ function openWindow(url: string): Subprocess | null {
 }
 
 async function isOurServer(): Promise<boolean> {
-  return fetch(`${BASE}/api/desktop/info`, { signal: AbortSignal.timeout(2000) })
+  // > update check timeout (5s): /info waits on it.
+  return fetch(`${BASE}/api/desktop/info`, { signal: AbortSignal.timeout(7000) })
     .then((res) => res.ok)
     .catch(() => false);
 }
@@ -160,9 +163,7 @@ try {
 
 console.log(`desktop: ${BASE}`);
 if (!process.env.OPENALTERNANCE_NO_UPDATE_CHECK) {
-  latestRelease().then((latest) => {
-    update = latest && isNewer(latest.version, pkg.version) ? latest : null;
-  });
+  update = latestRelease().then((latest) => (latest && isNewer(latest.version, pkg.version) ? latest : null));
 }
 const win = openWindow(BASE);
 if (win) {

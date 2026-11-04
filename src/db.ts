@@ -36,6 +36,12 @@ if (dialect === "sqlite") {
   if (file !== ":memory:") chmodSync(file, 0o600);
 }
 
+// Bun.SQL reports SQLite unique/primary-key hits with their own codes, not 23505.
+export function isUniqueViolation(error: unknown): boolean {
+  const code = (error as { code?: string }).code ?? "";
+  return /^(23505|SQLITE_CONSTRAINT_(UNIQUE|PRIMARYKEY))$/.test(code);
+}
+
 export function schema(d: Dialect): string[] {
   const pg = d === "postgres";
   const ID = pg ? "INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY" : "INTEGER PRIMARY KEY AUTOINCREMENT";

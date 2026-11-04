@@ -749,6 +749,31 @@ x` }) });
     expect(s.postes.find((p) => p.id === b)?.etat.statut).toBe("contacte");
   });
 
+  test("relance le même jour sur deux pistes: acceptée, doublon refusé par piste", async () => {
+    const nom = "TEST-suivi-relance-pistes";
+    await auth("/api/entreprise", { method: "POST", body: JSON.stringify({ nom }) });
+    await auth("/api/poste", { method: "POST", body: JSON.stringify({ entreprise: nom, intitule: "A" }) });
+    const a = String(await posteDe(nom));
+    const relance = (poste?: string) =>
+      auth("/api/echange", { method: "POST", body: JSON.stringify({ entreprise: nom, type: "relance", date: "2026-10-05", ...(poste ? { poste } : {}) }) });
+    expect((await relance()).status).toBe(200);
+    expect((await relance(a)).status).toBe(200);
+    expect((await relance(a)).status).toBe(400);
+  });
+
+  test("poste supprimé: ses échanges passent en spontanée et l'état est rejoué", async () => {
+    const nom = "TEST-suivi-poste-suppr";
+    await auth("/api/entreprise", { method: "POST", body: JSON.stringify({ nom }) });
+    await auth("/api/statut", { method: "POST", body: JSON.stringify({ entreprise: nom, statut: "refuse" }) });
+    await auth("/api/poste", { method: "POST", body: JSON.stringify({ entreprise: nom, intitule: "A" }) });
+    const a = await posteDe(nom);
+    await auth("/api/echange", { method: "POST", body: JSON.stringify({ entreprise: nom, type: "candidature", date: "2026-10-02", poste: String(a) }) });
+    expect((await suivi()).companies.find((c) => c.nom === nom)?.statut).toBe("contacte");
+    await auth("/api/poste-supprimer", { method: "POST", body: JSON.stringify({ id: String(a) }) });
+    const company = (await suivi()).companies.find((c) => c.nom === nom)!;
+    expect(company.statut).toBe(company.spontanee.statut);
+  });
+
   test("piste spontanée exposée à part de l'agrégat", async () => {
     const nom = "TEST-suivi-spontanee";
     await auth("/api/entreprise", { method: "POST", body: JSON.stringify({ nom }) });

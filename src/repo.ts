@@ -147,8 +147,8 @@ export async function logInteraction(
   const delai = delaiDays(fields.delai);
   const company = await findCompany(companyNom);
   if (type === "relance") {
-    const [dup] = await sql`SELECT 1 FROM interactions WHERE company_id = ${company.id} AND type = 'relance' AND date = ${date}`;
-    if (dup) throw new Error(`relance déjà enregistrée le ${date} pour ${company.nom}`);
+    const sameDay = await sql<{ poste_id: number | null }[]>`SELECT poste_id FROM interactions WHERE company_id = ${company.id} AND type = 'relance' AND date = ${date}`;
+    if (sameDay.some((row) => row.poste_id === (fields.posteId ?? null))) throw new Error(`relance déjà enregistrée le ${date} pour ${company.nom}`);
   }
   await sql.begin(async (tx) => {
     await assertPoste(tx, company.id, fields.posteId);
@@ -189,7 +189,7 @@ export async function updateInteraction(
 }
 
 // Table is a literal from this module, never user input.
-async function deleteById(table: "contacts" | "postes" | "agences", id: number, label: string): Promise<void> {
+async function deleteById(table: "contacts" | "agences", id: number, label: string): Promise<void> {
   const [deleted] = await sql<{ id: number }[]>`DELETE FROM ${sql(table)} WHERE id = ${id} RETURNING id`;
   if (!deleted) throw new Error(`${label} introuvable: ${id}`);
 }
@@ -215,7 +215,14 @@ export async function updatePoste(id: number, fields: PosteFields): Promise<void
     publication = ${fields.publication ?? null}, agence_id = ${fields.agenceId ?? null} WHERE id = ${id}`;
 }
 
-export const deletePoste = (id: number) => deleteById("postes", id, "poste");
+// ON DELETE SET NULL moves its rows to the spontanée track: replay.
+export async function deletePoste(id: number): Promise<void> {
+  await sql.begin(async (tx) => {
+    const [deleted] = await tx<{ company_id: number }[]>`DELETE FROM postes WHERE id = ${id} RETURNING company_id`;
+    if (!deleted) throw new Error(`poste introuvable: ${id}`);
+    await replayCompany(tx, deleted.company_id);
+  });
+}
 
 export async function listPostes(): Promise<Poste[]> {
   return sql<Poste[]>`SELECT id, company_id, intitule, contrat, annonce, publication, candidatures, reponses, agence_id FROM postes ORDER BY intitule`;

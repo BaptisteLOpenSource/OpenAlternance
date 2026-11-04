@@ -690,7 +690,7 @@ describe("base de test (TEST_DATABASE_URL)", () => {
   });
 
   type Suivi = {
-    companies: { nom: string; statut: string; prochaine_relance: string | null }[];
+    companies: { nom: string; statut: string; prochaine_relance: string | null; spontanee: { statut: string } }[];
     postes: { id: number; etat: { statut: string; prochaine: string | null } }[];
     interactions: { id: number; nom: string; type: string }[];
   };
@@ -747,6 +747,17 @@ x` }) });
     expect(s.companies.find((c) => c.nom === nom)?.statut).toBe("contacte");
     expect(s.postes.find((p) => p.id === a)?.etat.statut).toBe("refuse");
     expect(s.postes.find((p) => p.id === b)?.etat.statut).toBe("contacte");
+  });
+
+  test("piste spontanée exposée à part de l'agrégat", async () => {
+    const nom = "TEST-suivi-spontanee";
+    await auth("/api/entreprise", { method: "POST", body: JSON.stringify({ nom }) });
+    await auth("/api/poste", { method: "POST", body: JSON.stringify({ entreprise: nom, intitule: "A" }) });
+    await auth("/api/echange", { method: "POST", body: JSON.stringify({ entreprise: nom, type: "candidature", date: "2026-10-02", poste: String(await posteDe(nom)) }) });
+    const company = async () => (await suivi()).companies.find((c) => c.nom === nom)!;
+    expect(await company()).toMatchObject({ statut: "contacte", spontanee: { statut: "a_contacter" } });
+    await auth("/api/statut", { method: "POST", body: JSON.stringify({ entreprise: nom, statut: "entretien" }) });
+    expect((await company()).spontanee.statut).toBe("entretien");
   });
 });
 

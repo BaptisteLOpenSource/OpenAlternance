@@ -50,12 +50,17 @@ async function isAuthenticated(req: Request): Promise<boolean> {
   return session !== undefined;
 }
 
-const postesAvecEtat = (postes: repo.Poste[], interactions: repo.Interaction[]) =>
-  postes.map((poste) => {
-    const siblings = postes.filter((p) => p.company_id === poste.company_id).map((p) => p.id);
-    const history = interactions.filter((i) => i.company_id === poste.company_id);
-    return { ...poste, etat: replayTracks(history, siblings).tracks.get(poste.id)! };
-  });
+// spontanee: the track the header StatutSelect writes, distinct from the aggregate statut.
+const avecEtats = (companies: repo.CompanyRow[], postes: repo.Poste[], interactions: repo.Interaction[]) => {
+  const tracks = new Map(companies.map((c) => [
+    c.id,
+    replayTracks(interactions.filter((i) => i.company_id === c.id), postes.filter((p) => p.company_id === c.id).map((p) => p.id)).tracks,
+  ]));
+  return {
+    companies: companies.map((c) => ({ ...c, spontanee: tracks.get(c.id)!.get(null)! })),
+    postes: postes.map((p) => ({ ...p, etat: tracks.get(p.company_id)!.get(p.id)! })),
+  };
+};
 
 const state = async () => {
   const [companies, contacts, postes, agences, interactions, lettres, pdfs, documents, profil, cv] = await Promise.all([
@@ -70,7 +75,7 @@ const state = async () => {
     repo.getProfil(),
     repo.hasFichier("cv.pdf"),
   ]);
-  return { today: today(), companies, contacts, postes: postesAvecEtat(postes, interactions), agences, interactions, lettres, pdfs, documents, profil, cv };
+  return { today: today(), ...avecEtats(companies, postes, interactions), contacts, agences, interactions, lettres, pdfs, documents, profil, cv };
 };
 
 type Field = (name: string) => string;

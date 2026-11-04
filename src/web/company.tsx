@@ -47,7 +47,7 @@ const etat = (c: CompanyRow) =>
       : { label: "En cours", dot: "bg-info" };
 
 const suiviLabel = (i: Interaction) =>
-  i.type === "statut" ? `Statut → ${STATUT[i.statut!].label}` : i.prochaine ? `Relance prévue le ${shortDate(i.prochaine)}` : "Relances arrêtées";
+  i.type === "statut" ? `Statut -> ${STATUT[i.statut!].label}` : i.prochaine ? `Relance prévue le ${shortDate(i.prochaine)}` : "Relances arrêtées";
 
 function Fact({ label, class: className, children }: { label: string; class?: string; children: ComponentChildren }) {
   return (
@@ -227,8 +227,8 @@ export function CompanyPage({
               <span aria-hidden="true" class={cn("size-2 rounded-full", status.dot)} />
               {status.label}
             </Fact>
-            <Fact label="Statut">
-              <StatutSelect company={company} send={send} />
+            <Fact label={postes.length ? "Statut spontanée" : "Statut"}>
+              <StatutSelect company={company} statut={company.spontanee.statut} send={send} />
             </Fact>
             <Fact label="1re communication">{shortDate(history[0]?.date)}</Fact>
             <Fact label="Dernier échange">{shortDate(company.derniere_interaction)}</Fact>
@@ -293,7 +293,7 @@ export function CompanyPage({
                     </div>
                   </div>
                   <div class="flex flex-wrap items-center gap-2">
-                    <StatutSelect company={company} poste={poste} send={send} />
+                    <StatutSelect company={company} statut={poste.etat.statut} poste={poste} send={send} />
                     {poste.etat.prochaine !== null && !CLOSING_STATUTS.has(poste.etat.statut) && <RelanceControls company={company} poste={poste} send={send} />}
                   </div>
                 </div>

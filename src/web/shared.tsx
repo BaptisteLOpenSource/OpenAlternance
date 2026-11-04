@@ -253,10 +253,10 @@ export function CopyButton({ value }: { value: string }) {
   );
 }
 
-// Without poste: spontanée track (company header, lists). With poste: that poste's état.
-export const StatutSelect = ({ company, poste, send }: { company: Pick<CompanyRow, "nom" | "statut">; poste?: PosteEtat; send: Send }) => (
+// Writes the poste's track, or the spontanée track without poste; statut = what that track shows.
+export const StatutSelect = ({ company, statut, poste, send }: { company: Pick<CompanyRow, "nom">; statut: Statut; poste?: PosteEtat; send: Send }) => (
   <Select
-    value={poste ? poste.etat.statut : company.statut}
+    value={statut}
     aria-label={poste ? `Statut du poste ${poste.intitule}` : `Statut de ${company.nom}`}
     options={STATUTS.map((s) => ({ value: s, label: STATUT[s].label }))}
     renderOption={(s) => <StatutBadge statut={s as Statut} />}

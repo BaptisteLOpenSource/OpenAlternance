@@ -180,7 +180,7 @@ export type Row = {
   prochaine: string | null;
 };
 
-type Etat = { statut: Statut; prochaine: string | null };
+export type Etat = { statut: Statut; prochaine: string | null };
 
 // Manual statut/planif are events: replay is the only writer of the cache.
 export function replayEchanges(rows: Row[]): Etat {

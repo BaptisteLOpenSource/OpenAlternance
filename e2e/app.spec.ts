@@ -38,6 +38,7 @@ const listRow = (c: typeof company) => ({
   poste: c.poste,
   derniere_interaction: c.derniere_interaction,
   contacts: c.contacts,
+  spontanee: { statut: c.statut, prochaine: c.prochaine_relance },
 });
 
 const postes = [
@@ -294,7 +295,7 @@ test("historique: événements statut et planif lisibles", async ({ page }) => {
   const mock: Mock = { loggedIn: true, calls: [] };
   await mockApi(page, mock);
   await page.goto("/#/entreprises/1");
-  await expect(page.getByText("Statut → Entretien")).toBeVisible();
+  await expect(page.getByText("Statut -> Entretien")).toBeVisible();
   await expect(page.getByText("Relances arrêtées")).toBeVisible();
 });
 

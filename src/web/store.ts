@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from "preact/hooks";
-import { type Profil, type Statut, logoPalette } from "../logic";
+import { type Etat, type Profil, logoPalette } from "../logic";
 import type { Agence, Company, CompanyRow, Contact, DocumentRow, Interaction, Lettre, Poste } from "../repo";
 
-// etat: this poste's track, replayed by the API from history (spontanée track is not sent).
-export type PosteEtat = Poste & { etat: { statut: Statut; prochaine: string | null } };
+// Tracks replayed by the API from history: etat per poste, spontanee per company.
+export type PosteEtat = Poste & { etat: Etat };
+export type CompanyEtat = CompanyRow & { spontanee: Etat };
 
 export type AppState = {
   today: string;
-  companies: CompanyRow[];
+  companies: CompanyEtat[];
   contacts: Contact[];
   interactions: (Interaction & { nom: string })[];
   postes: PosteEtat[];

@@ -304,7 +304,7 @@ export function TableurPage({
                     <CopyButton value={toTsv([r.cells])} />
                   </TableCell>
                   <TableCell>
-                    <StatutSelect company={r.company} send={send} />
+                    <StatutSelect company={r.company} statut={r.company.statut} send={send} />
                   </TableCell>
                   <TableCell>
                     {r.missing.length > 0 ? (

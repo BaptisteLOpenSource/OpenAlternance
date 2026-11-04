@@ -26,6 +26,27 @@ test("sqlite migrate creates the missing parent directory", async () => {
   expect(existsSync(file)).toBe(true);
 });
 
+test("migrate idempotent, poste legacy backfilled once", async () => {
+  const file = join(mkdtempSync(join(tmpdir(), "oa-")), "x.db");
+  const script = `
+    const { sql, migrate } = await import("./src/db");
+    await sql.unsafe("CREATE TABLE companies (id INTEGER PRIMARY KEY AUTOINCREMENT, nom TEXT NOT NULL UNIQUE, poste TEXT, publication TEXT, candidatures TEXT, reponses TEXT, annonce TEXT)");
+    await sql.unsafe("CREATE TABLE interactions (id INTEGER PRIMARY KEY AUTOINCREMENT, company_id INTEGER NOT NULL, type TEXT NOT NULL, date TEXT NOT NULL)");
+    await sql\`INSERT INTO companies (nom, poste, annonce) VALUES ('MGDIS', 'Dev', 'https://x'), ('Vide', '', NULL)\`;
+    await migrate();
+    await migrate();
+    const postes = await sql\`SELECT intitule, contrat, annonce FROM postes\`;
+    const cols = (await sql\`PRAGMA table_info(interactions)\`).map((c) => c.name);
+    console.log(JSON.stringify({ postes: [...postes], cols }));
+  `;
+  const p = Bun.spawn(["bun", "-e", script], { env: { ...process.env, DATABASE_URL: `sqlite://${file}` }, stderr: "pipe" });
+  const out = await new Response(p.stdout).text();
+  expect(await p.exited, await new Response(p.stderr).text()).toBe(0);
+  const { postes, cols } = JSON.parse(out);
+  expect(postes).toEqual([{ intitule: "Dev", contrat: "alternance", annonce: "https://x" }]);
+  expect(cols).toEqual(expect.arrayContaining(["poste_id", "statut", "prochaine", "auto"]));
+});
+
 test("bootError refuse SQLite sur Vercel", () => {
   expect(bootError({ VERCEL: "1" }, "sqlite")).toMatch(/SQLite.*Vercel/);
   expect(bootError({ VERCEL: "1" }, "postgres")).toBeNull();

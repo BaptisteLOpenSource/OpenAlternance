@@ -42,6 +42,13 @@ export function isUniqueViolation(error: unknown): boolean {
   return /^(23505|SQLITE_CONSTRAINT_(UNIQUE|PRIMARYKEY))$/.test(code);
 }
 
+const INTERACTION_COLUMNS = [
+  "poste_id INTEGER REFERENCES postes(id) ON DELETE SET NULL",
+  "statut TEXT",
+  "prochaine TEXT",
+  "auto TEXT",
+];
+
 export function schema(d: Dialect): string[] {
   const pg = d === "postgres";
   const ID = pg ? "INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY" : "INTEGER PRIMARY KEY AUTOINCREMENT";
@@ -95,7 +102,26 @@ export function schema(d: Dialect): string[] {
     type TEXT NOT NULL,
     date TEXT NOT NULL,
     note TEXT,
-    delai INTEGER DEFAULT 7
+    delai INTEGER DEFAULT 7,
+    ${INTERACTION_COLUMNS.join(",\n    ")}
+  )`,
+    `CREATE TABLE IF NOT EXISTS agences (
+    id ${ID},
+    company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+    ville TEXT NOT NULL,
+    adresse TEXT,
+    code_postal TEXT
+  )`,
+    `CREATE TABLE IF NOT EXISTS postes (
+    id ${ID},
+    company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+    intitule TEXT NOT NULL,
+    contrat TEXT NOT NULL DEFAULT 'alternance',
+    annonce TEXT,
+    publication TEXT,
+    candidatures TEXT,
+    reponses TEXT,
+    agence_id INTEGER REFERENCES agences(id) ON DELETE SET NULL
   )`,
     `CREATE TABLE IF NOT EXISTS lettres (
     file TEXT PRIMARY KEY,
@@ -130,6 +156,20 @@ export function schema(d: Dialect): string[] {
   ];
 }
 
+
+async function addColumn(table: string, column: string): Promise<void> {
+  if (dialect === "postgres") return void (await sql.unsafe(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${column}`));
+  try {
+    await sql.unsafe(`ALTER TABLE ${table} ADD COLUMN ${column}`);
+  } catch (error) {
+    if (!/duplicate column name/i.test((error as Error).message)) throw error;
+  }
+}
+
 export async function migrate(): Promise<void> {
   for (const statement of schema(dialect)) await sql.unsafe(statement);
+  for (const column of INTERACTION_COLUMNS) await addColumn("interactions", column);
+  await sql`INSERT INTO postes (company_id, intitule, annonce, publication, candidatures, reponses)
+    SELECT id, poste, annonce, publication, candidatures, reponses FROM companies
+    WHERE poste IS NOT NULL AND poste <> '' AND id NOT IN (SELECT company_id FROM postes)`;
 }

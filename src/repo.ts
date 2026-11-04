@@ -394,7 +394,6 @@ export async function setProfil(fields: Profil): Promise<void> {
       adresse = EXCLUDED.adresse, site = EXCLUDED.site, nom_fichier = EXCLUDED.nom_fichier`;
 }
 
-// Lettres PDF only: the CV and uploaded document PDFs have their own place in the UI.
 export async function listPdfs(): Promise<string[]> {
   const rows = await sql<{ name: string }[]>`SELECT name FROM fichiers
     WHERE name LIKE '%.pdf' AND name <> 'cv.pdf' AND name NOT IN (SELECT name FROM documents)

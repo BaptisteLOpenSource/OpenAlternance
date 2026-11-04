@@ -23,7 +23,6 @@ export function authRequired(env: Record<string, string | undefined>): boolean {
 // Key embeds password fingerprint: old-password sessions stop matching.
 const sessionKey = (cookieToken: string): string => `${digest(PASSWORD).toString("hex").slice(0, 16)}.${cookieToken}`;
 
-// Base64 in JSON: size cap, then magic check. Nothing is stored before both pass.
 function pdfBytes(data: string): Uint8Array {
   if (data.length > MAX_PDF_BASE64) throw new Error("PDF trop volumineux (3 Mo max)");
   const bytes = Buffer.from(data, "base64");

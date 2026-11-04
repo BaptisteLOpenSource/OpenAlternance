@@ -3,6 +3,7 @@
 import { appendFileSync, existsSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { win32 } from "node:path";
+import type { Subprocess } from "bun";
 import pkg from "../../package.json";
 import { pad } from "../logic";
 import { desktopPaths, resolveDatabaseUrl } from "./config";
@@ -113,24 +114,30 @@ async function embeddedPublicFile(path: string): Promise<Response> {
   return blob ? new Response(blob) : json({ error: "Introuvable" }, 404);
 }
 
-async function openWindow(url: string): Promise<void> {
-  if (process.env.OPENALTERNANCE_NO_WINDOW) return;
-  const start = (target: string[]) =>
-    Bun.spawn(["cmd", "/c", "start", "", ...target], { stdin: "ignore", stdout: "ignore", stderr: "ignore" }).exited;
+// Own profile = own browser process: its exit means the window closed.
+function openWindow(url: string): Subprocess | null {
+  if (process.env.OPENALTERNANCE_NO_WINDOW) return null;
+  const io = { stdin: "ignore", stdout: "ignore", stderr: "ignore" } as const;
   // `start msedge` pops a blocking dialog when Edge is not registered
-  const edge = [process.env["ProgramFiles(x86)"], process.env.ProgramFiles, process.env.LOCALAPPDATA]
-    .filter(Boolean)
-    .map((dir) => win32.join(dir!, "Microsoft", "Edge", "Application", "msedge.exe"))
+  const dirs = [process.env["ProgramFiles(x86)"], process.env.ProgramFiles, process.env.LOCALAPPDATA].filter(Boolean);
+  const exes = [
+    ["Microsoft", "Edge", "Application", "msedge.exe"],
+    ["Google", "Chrome", "Application", "chrome.exe"],
+    ["BraveSoftware", "Brave-Browser", "Application", "brave.exe"],
+  ];
+  const browser = exes
+    .flatMap((exe) => dirs.map((dir) => win32.join(dir!, ...exe)))
     .find((exe) => existsSync(exe));
-  if (edge) {
+  if (browser) {
     try {
-      Bun.spawn([edge, `--app=${url}`], { stdin: "ignore", stdout: "ignore", stderr: "ignore" });
-      return;
+      const profile = `--user-data-dir=${win32.join(paths.data, "browser")}`;
+      return Bun.spawn([browser, `--app=${url}`, profile, "--no-first-run"], io);
     } catch (error) {
       log(error);
     }
   }
-  await start([url]);
+  Bun.spawn(["cmd", "/c", "start", "", url], io);
+  return null;
 }
 
 async function isOurServer(): Promise<boolean> {
@@ -144,7 +151,7 @@ try {
 } catch (error) {
   const code = (error as { code?: string }).code;
   if (code === "EADDRINUSE" && (await isOurServer())) {
-    await openWindow(BASE);
+    openWindow(BASE);
     process.exit(0);
   }
   log(error);
@@ -157,8 +164,12 @@ if (!process.env.OPENALTERNANCE_NO_UPDATE_CHECK) {
     update = latest && isNewer(latest.version, pkg.version) ? latest : null;
   });
 }
-// ponytail: idle exit only; tray icon would keep it alive.
+const win = openWindow(BASE);
+if (win) {
+  await win.exited;
+  process.exit(0);
+}
+// No tracked window (no Chromium): idle exit is the only way down.
 setInterval(() => {
   if (Date.now() - last > IDLE_MS) process.exit(0);
 }, 60_000);
-await openWindow(BASE);

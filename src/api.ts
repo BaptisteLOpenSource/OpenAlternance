@@ -1,6 +1,6 @@
 import { SESSION_DAYS, clearSessionCookie, digest, newSessionToken, passwordMatches, sessionCookie, sessionTokenFrom } from "./auth";
 import { sql } from "./db";
-import { CONTRATS, FICHE_TEXTES, LETTRE_STATUTS, MAIL_CANAUX, NOM_FICHIER_DEFAUT, STATUTS, SUIVIS, TYPES, delaiDays, documentFile, isoAgo, isoDate, oneOf, stripFrontmatter, today } from "./logic";
+import { CONTRATS, FICHE_TEXTES, LETTRE_STATUTS, MAIL_CANAUX, NOM_FICHIER_DEFAUT, STATUTS, SUIVIS, TYPES, delaiDays, documentFile, isoAgo, isoDate, oneOf, replayTracks, stripFrontmatter, today } from "./logic";
 import { MAX_PDF_BASE64, pdfToHtml, renderDocument } from "./documents";
 import { logoType } from "./logo";
 import * as repo from "./repo";
@@ -50,6 +50,13 @@ async function isAuthenticated(req: Request): Promise<boolean> {
   return session !== undefined;
 }
 
+const postesAvecEtat = (postes: repo.Poste[], interactions: repo.Interaction[]) =>
+  postes.map((poste) => {
+    const siblings = postes.filter((p) => p.company_id === poste.company_id).map((p) => p.id);
+    const history = interactions.filter((i) => i.company_id === poste.company_id);
+    return { ...poste, etat: replayTracks(history, siblings).tracks.get(poste.id)! };
+  });
+
 const state = async () => {
   const [companies, contacts, postes, agences, interactions, lettres, pdfs, documents, profil, cv] = await Promise.all([
     repo.listCompanies(),
@@ -63,7 +70,7 @@ const state = async () => {
     repo.getProfil(),
     repo.hasFichier("cv.pdf"),
   ]);
-  return { today: today(), companies, contacts, postes, agences, interactions, lettres, pdfs, documents, profil, cv };
+  return { today: today(), companies, contacts, postes: postesAvecEtat(postes, interactions), agences, interactions, lettres, pdfs, documents, profil, cv };
 };
 
 type Field = (name: string) => string;
@@ -183,9 +190,9 @@ const ACTIONS: Record<string, (required: Field, optional: Optional, body: Record
   "lettre-statut": (required, optional) =>
     repo.setLettreStatut(required("entreprise"), oneOf(required("statut"), LETTRE_STATUTS, "statut"), optional("date")),
   "lettre-supprimer": (required) => repo.deleteLettre(required("file")),
-  statut: (required) => repo.setStatut(required("entreprise"), oneOf(required("statut"), STATUTS, "statut")),
-  "sans-reponse": (required) => repo.closeRelance(required("entreprise")),
-  "relance-date": (required) => repo.setRelance(required("entreprise"), required("date")),
+  statut: (required, optional) => repo.setStatut(required("entreprise"), oneOf(required("statut"), STATUTS, "statut"), refId(optional, "poste")),
+  "sans-reponse": (required, optional) => repo.closeRelance(required("entreprise"), refId(optional, "poste")),
+  "relance-date": (required, optional) => repo.setRelance(required("entreprise"), required("date"), refId(optional, "poste")),
   profil: (required, optional) =>
     repo.setProfil({
       username: required("username"),

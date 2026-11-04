@@ -1,7 +1,6 @@
 import { isUniqueViolation, sql } from "./db";
 import { fetchLogo } from "./logo";
 import {
-  CLOSING_STATUTS,
   type Contrat,
   type DocFormat,
   type FicheExtra,
@@ -9,20 +8,18 @@ import {
   type Profil,
   PROFIL_VIDE,
   type Statut,
+  carry,
   delaiDays,
   fileName,
   isWebUrl,
   type LettreStatut,
   isoDate,
   parseFrontmatter,
-  relanceAfter,
-  relanceForStatut,
-  replayEchanges,
+  replayTracks,
+  type Row,
   setFrontmatter,
   slug,
-  statutAfter,
   today,
-  daysBetween,
 } from "./logic";
 
 const SAFE_NAME = /^[\w.-]+\.md$/;
@@ -93,6 +90,8 @@ export type Interaction = {
   note: string | null;
   delai: number | null;
   poste_id: number | null;
+  statut: Statut | null;
+  prochaine: string | null;
 };
 
 export async function findCompany(nom: string): Promise<Company> {
@@ -142,31 +141,29 @@ async function assertAgence(tx: typeof sql, companyId: number, agenceId: number 
 export async function logInteraction(
   companyNom: string,
   type: InteractionType,
-  fields: { date?: string; delai?: string | null; note?: string; posteId?: number },
+  fields: { date?: string; delai?: string | null; note?: string; posteId?: number; auto?: string },
 ): Promise<void> {
   const date = isoDate(fields.date ?? today());
   const delai = delaiDays(fields.delai);
   const company = await findCompany(companyNom);
-  const statut = statutAfter(type, company.statut);
-  const relance = relanceAfter(type, date, delai, company.prochaine_relance, statut);
   if (type === "relance") {
     const [dup] = await sql`SELECT 1 FROM interactions WHERE company_id = ${company.id} AND type = 'relance' AND date = ${date}`;
     if (dup) throw new Error(`relance déjà enregistrée le ${date} pour ${company.nom}`);
   }
   await sql.begin(async (tx) => {
     await assertPoste(tx, company.id, fields.posteId);
-    await tx`INSERT INTO interactions (company_id, type, date, note, delai, poste_id) VALUES (${company.id}, ${type}, ${date}, ${fields.note ?? null}, ${delai}, ${fields.posteId ?? null})`;
-    await tx`UPDATE companies SET statut = ${statut}, prochaine_relance = ${relance}, retard = 0 WHERE id = ${company.id}`;
+    await tx`INSERT INTO interactions (company_id, type, date, note, delai, poste_id, auto) VALUES (${company.id}, ${type}, ${date}, ${fields.note ?? null}, ${delai}, ${fields.posteId ?? null}, ${fields.auto ?? null})`;
+    await replayCompany(tx, company.id);
   });
 }
 
-// Rebuilds statut and relance from the company's interactions (after any edit or delete of one).
 async function replayCompany(tx: typeof sql, companyId: number): Promise<void> {
-  const [company] = await tx<Company[]>`SELECT * FROM companies WHERE id = ${companyId}`;
-  const rows = await tx<{ type: InteractionType; date: string; delai: number | null }[]>`
-    SELECT type, date, delai FROM interactions WHERE company_id = ${companyId} ORDER BY date, id`;
-  const { statut, prochaine } = replayEchanges(company.statut, rows);
-  await tx`UPDATE companies SET statut = ${statut}, prochaine_relance = ${prochaine} WHERE id = ${companyId}`;
+  const postes = await tx<{ id: number }[]>`SELECT id FROM postes WHERE company_id = ${companyId}`;
+  const rows = await tx<Row[]>`
+    SELECT type, date, delai, poste_id, statut, prochaine FROM interactions WHERE company_id = ${companyId} ORDER BY date, id`;
+  const replay = replayTracks(rows, postes.map((poste) => poste.id));
+  const relance = carry(replay.prochaine, replay.statut, today());
+  await tx`UPDATE companies SET statut = ${replay.statut}, prochaine_relance = ${relance.prochaine}, retard = ${relance.retard} WHERE id = ${companyId}`;
 }
 
 export async function deleteInteraction(id: number): Promise<void> {
@@ -263,22 +260,32 @@ export async function deleteCompany(companyNom: string): Promise<void> {
   });
 }
 
-export async function setStatut(companyNom: string, statut: Statut): Promise<void> {
+type Suivi = { type: "statut"; statut: Statut } | { type: "planif"; prochaine: string | null };
+
+// Manual change = event row, cache replayed from history.
+async function recordSuivi(companyNom: string, posteId: number | undefined, suivi: Suivi): Promise<void> {
   const company = await findCompany(companyNom);
-  const relance = relanceForStatut(statut, company.prochaine_relance, today());
-  await sql`UPDATE companies SET statut = ${statut}, prochaine_relance = ${relance}, retard = 0 WHERE id = ${company.id}`;
+  await sql.begin(async (tx) => {
+    await assertPoste(tx, company.id, posteId);
+    const statut = suivi.type === "statut" ? suivi.statut : null;
+    const prochaine = suivi.type === "planif" ? suivi.prochaine : null;
+    await tx`INSERT INTO interactions (company_id, type, date, poste_id, statut, prochaine) VALUES (${company.id}, ${suivi.type}, ${today()}, ${posteId ?? null}, ${statut}, ${prochaine})`;
+    await replayCompany(tx, company.id);
+  });
+}
+
+export async function setStatut(companyNom: string, statut: Statut, posteId?: number): Promise<void> {
+  await recordSuivi(companyNom, posteId, { type: "statut", statut });
 }
 
 // Annuler la relance prévue: stop chasing, keep the statut.
-export async function closeRelance(companyNom: string): Promise<void> {
-  const company = await findCompany(companyNom);
-  await sql`UPDATE companies SET prochaine_relance = NULL, retard = 0 WHERE id = ${company.id}`;
+export async function closeRelance(companyNom: string, posteId?: number): Promise<void> {
+  await recordSuivi(companyNom, posteId, { type: "planif", prochaine: null });
 }
 
 // Décaler / modifier la relance prévue à la main: la date saisie remplace le retard.
-export async function setRelance(companyNom: string, date: string): Promise<void> {
-  const company = await findCompany(companyNom);
-  await sql`UPDATE companies SET prochaine_relance = ${isoDate(date)}, retard = 0 WHERE id = ${company.id}`;
+export async function setRelance(companyNom: string, date: string, posteId?: number): Promise<void> {
+  await recordSuivi(companyNom, posteId, { type: "planif", prochaine: isoDate(date) });
 }
 
 // Relance due before today and not handled: pulled to today, retard counts the days carried.
@@ -286,11 +293,11 @@ export async function setRelance(companyNom: string, date: string): Promise<void
 export async function reporterRelances(): Promise<void> {
   const now = today();
   await sql.begin(async (tx) => {
-    const due = await tx<{ id: number; prochaine_relance: string; statut: string }[]>`
+    const due = await tx<{ id: number; prochaine_relance: string; statut: Statut }[]>`
       SELECT id, prochaine_relance, statut FROM companies WHERE prochaine_relance < ${now}`;
     for (const r of due) {
-      if ((CLOSING_STATUTS as ReadonlySet<string>).has(r.statut)) continue;
-      await tx`UPDATE companies SET retard = retard + ${daysBetween(r.prochaine_relance, now)}, prochaine_relance = ${now} WHERE id = ${r.id} AND prochaine_relance = ${r.prochaine_relance}`;
+      const moved = carry(r.prochaine_relance, r.statut, now);
+      await tx`UPDATE companies SET retard = retard + ${moved.retard}, prochaine_relance = ${moved.prochaine} WHERE id = ${r.id} AND prochaine_relance = ${r.prochaine_relance}`;
     }
   });
 }
@@ -404,7 +411,7 @@ export async function listContacts(): Promise<Contact[]> {
 
 export async function listInteractions(): Promise<(Interaction & { nom: string })[]> {
   return sql<(Interaction & { nom: string })[]>`
-    SELECT i.id, i.company_id, i.type, i.date, i.note, i.delai, i.poste_id, c.nom
+    SELECT i.id, i.company_id, i.type, i.date, i.note, i.delai, i.poste_id, i.statut, i.prochaine, c.nom
     FROM interactions i JOIN companies c ON c.id = i.company_id ORDER BY i.date`;
 }
 
@@ -459,15 +466,24 @@ export async function setLettreStatut(companyNom: string, statut: LettreStatut, 
   if (content === null) throw new Error(`Lettre introuvable: ${companyNom}`);
   const envoi = statut === "envoyee" ? isoDate(date ?? today()) : "";
   await sql`UPDATE lettres SET content = ${setFrontmatter(content, { statut, date_envoi: envoi })} WHERE file = ${file}`;
-  if (statut === "envoyee") await logCandidature(companyNom, envoi);
+  if (statut === "envoyee") await logCandidature(companyNom, envoi, file);
+  else await unlogCandidature(file);
 }
 
-// Sent letter = candidature: logged once, so the company turns contacte with its relance.
-async function logCandidature(companyNom: string, date: string): Promise<void> {
+// Sent letter = candidature: logged once, tagged with its letter so brouillon can undo it.
+async function logCandidature(companyNom: string, date: string, file: string): Promise<void> {
   const [company] = await sql<{ id: number }[]>`SELECT id FROM companies WHERE lower(nom) = lower(${companyNom})`;
   if (!company) return;
   const [logged] = await sql`SELECT 1 FROM interactions WHERE company_id = ${company.id} AND type = 'candidature'`;
-  if (!logged) await logInteraction(companyNom, "candidature", { date });
+  if (!logged) await logInteraction(companyNom, "candidature", { date, auto: `lettre:${file}` });
+}
+
+// Hand-logged candidatures carry no tag, so they survive.
+async function unlogCandidature(file: string): Promise<void> {
+  await sql.begin(async (tx) => {
+    const removed = await tx<{ company_id: number }[]>`DELETE FROM interactions WHERE auto = ${`lettre:${file}`} RETURNING company_id`;
+    for (const { company_id } of removed) await replayCompany(tx, company_id);
+  });
 }
 
 // Keyed by file: a letter outlives its company, so the name cannot find it.

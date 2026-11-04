@@ -30,8 +30,8 @@ test("migrate idempotent, poste legacy backfilled once", async () => {
   const file = join(mkdtempSync(join(tmpdir(), "oa-")), "x.db");
   const script = `
     const { sql, migrate } = await import("./src/db");
-    await sql.unsafe("CREATE TABLE companies (id INTEGER PRIMARY KEY AUTOINCREMENT, nom TEXT NOT NULL UNIQUE, poste TEXT, publication TEXT, candidatures TEXT, reponses TEXT, annonce TEXT)");
-    await sql.unsafe("CREATE TABLE interactions (id INTEGER PRIMARY KEY AUTOINCREMENT, company_id INTEGER NOT NULL, type TEXT NOT NULL, date TEXT NOT NULL)");
+    await sql.unsafe("CREATE TABLE companies (id INTEGER PRIMARY KEY AUTOINCREMENT, nom TEXT NOT NULL UNIQUE, statut TEXT NOT NULL DEFAULT 'a_contacter', prochaine_relance TEXT, retard INTEGER NOT NULL DEFAULT 0, poste TEXT, publication TEXT, candidatures TEXT, reponses TEXT, annonce TEXT)");
+    await sql.unsafe("CREATE TABLE interactions (id INTEGER PRIMARY KEY AUTOINCREMENT, company_id INTEGER NOT NULL, type TEXT NOT NULL, date TEXT NOT NULL, note TEXT, delai INTEGER DEFAULT 7)");
     await sql\`INSERT INTO companies (nom, poste, annonce) VALUES ('MGDIS', 'Dev', 'https://x'), ('Vide', '', NULL)\`;
     await migrate();
     await migrate();
@@ -71,4 +71,30 @@ test.skipIf(process.platform === "win32")("sqlite file is private to the owner",
   expect(await p.exited).toBe(0);
   expect(statSync(file).mode & 0o777).toBe(0o600);
   expect(statSync(join(dir, "nested")).mode & 0o777).toBe(0o700);
+});
+
+test("migrate réconcilie un statut posé à la main une seule fois", async () => {
+  const file = join(mkdtempSync(join(tmpdir(), "oa-")), "x.db");
+  const script = `
+    const { sql, migrate } = await import("./src/db");
+    const { replayTracks } = await import("./src/logic");
+    await migrate();
+    await sql\`INSERT INTO companies (nom, statut) VALUES ('MGDIS', 'entretien')\`;
+    const [{ id }] = await sql\`SELECT id FROM companies\`;
+    await sql\`INSERT INTO interactions (company_id, type, date, delai) VALUES (\${id}, 'candidature', '2026-10-01', 7)\`;
+    await migrate();
+    await migrate();
+    const [company] = await sql\`SELECT statut, prochaine_relance FROM companies\`;
+    const events = await sql\`SELECT type, statut FROM interactions WHERE type = 'statut'\`;
+    const rows = await sql\`SELECT type, date, delai, poste_id, statut, prochaine FROM interactions ORDER BY date, id\`;
+    const replay = replayTracks([...rows], []);
+    console.log(JSON.stringify({ company: { ...company }, events: [...events], replay: { statut: replay.statut, prochaine: replay.prochaine } }));
+  `;
+  const p = Bun.spawn(["bun", "-e", script], { env: { ...process.env, DATABASE_URL: `sqlite://${file}` }, stderr: "pipe" });
+  const out = await new Response(p.stdout).text();
+  expect(await p.exited, await new Response(p.stderr).text()).toBe(0);
+  const { company, events, replay } = JSON.parse(out);
+  expect(company).toEqual({ statut: "entretien", prochaine_relance: null });
+  expect(events).toEqual([{ type: "statut", statut: "entretien" }]);
+  expect(replay).toEqual({ statut: "entretien", prochaine: null });
 });

@@ -1,6 +1,6 @@
 import { Ban, Check, CircleCheck, CircleDashed, CircleX, Copy, FileUp, Handshake, Hourglass, Mail, MessageSquare, Phone, Redo2, Send, Trash2, Trophy, UserX, X } from "lucide-preact";
 import { useState } from "preact/hooks";
-import { CLOSING_STATUTS, FICHE_EXTRA, type FicheExtra, LETTRE_STATUTS, type InteractionType, type LettreStatut, STATUTS, type Statut, today } from "../logic";
+import { CLOSING_STATUTS, FICHE_EXTRA, type FicheExtra, LETTRE_STATUTS, type InteractionType, type LettreStatut, STATUTS, type Statut, TYPES, today } from "../logic";
 import type { CompanyRow, Lettre } from "../repo";
 import type { Action } from "./store";
 import { Select } from "./menus";
@@ -61,7 +61,7 @@ export const STATUT: Record<Statut, Tag> = {
   indisponible: { label: "Pas d'alternant", variant: "outline", icon: UserX },
 };
 
-export const ECHANGE: Record<InteractionType, Tag> = {
+export const ECHANGE: Record<(typeof TYPES)[number], Tag> = {
   mail: { label: "Email", variant: "info", icon: Mail },
   appel: { label: "Appel", variant: "info", icon: Phone },
   candidature: { label: "Candidature", variant: "info", icon: Send },
@@ -72,7 +72,7 @@ export const ECHANGE: Record<InteractionType, Tag> = {
   reponse_defavorable: { label: "Réponse défavorable", variant: "destructive", icon: CircleX },
   depot: { label: "CV déposé", variant: "info", icon: FileUp },
 };
-export const echangeLabel = (type: string) => ECHANGE[type as InteractionType]?.label ?? type;
+export const echangeLabel = (type: string) => ECHANGE[type as (typeof TYPES)[number]]?.label ?? type;
 
 export const TagBadge = ({ tag, class: className }: { tag: Tag; class?: string }) => (
   <Badge variant={tag.variant} class={className}>
@@ -81,7 +81,7 @@ export const TagBadge = ({ tag, class: className }: { tag: Tag; class?: string }
   </Badge>
 );
 export const EchangeBadge = ({ type }: { type: string }) =>
-  type in ECHANGE ? <TagBadge tag={ECHANGE[type as InteractionType]} /> : <Badge variant="outline">{type}</Badge>;
+  type in ECHANGE ? <TagBadge tag={ECHANGE[type as (typeof TYPES)[number]]} /> : <Badge variant="outline">{type}</Badge>;
 
 export const formFields = (form: HTMLFormElement) =>
   Object.fromEntries([...new FormData(form)].map(([k, v]) => [k, typeof v === "string" ? v : v.name]));

@@ -586,6 +586,66 @@ describe("base de test (TEST_DATABASE_URL)", () => {
     const res = await auth("/api/poste", { method: "POST", body: JSON.stringify({ entreprise: "TEST-agences", intitule: "X", agence: String(agenceId) }) });
     expect(res.status).toBe(400);
   });
+
+  type Suivi = {
+    companies: { nom: string; statut: string; prochaine_relance: string | null }[];
+    postes: { id: number; etat: { statut: string; prochaine: string | null } }[];
+    interactions: { id: number; nom: string; type: string }[];
+  };
+  const suivi = async () => (await (await auth("/api/state")).json()) as Suivi;
+
+  test("statut manuel: événement dans l'historique, survit à la suppression d'un échange antérieur", async () => {
+    const nom = "TEST-suivi-statut";
+    await auth("/api/entreprise", { method: "POST", body: JSON.stringify({ nom }) });
+    await auth("/api/echange", { method: "POST", body: JSON.stringify({ entreprise: nom, type: "mail", date: "2026-10-01" }) });
+    const mail = (await suivi()).interactions.find((i) => i.nom === nom && i.type === "mail")!;
+    await auth("/api/statut", { method: "POST", body: JSON.stringify({ entreprise: nom, statut: "entretien" }) });
+    expect((await suivi()).interactions.some((i) => i.nom === nom && i.type === "statut")).toBe(true);
+    await auth("/api/echange-supprimer", { method: "POST", body: JSON.stringify({ id: String(mail.id) }) });
+    expect((await suivi()).companies.find((c) => c.nom === nom)?.statut).toBe("entretien");
+  });
+
+  test("relance datée puis échange modifié: la relance tient", async () => {
+    const nom = "TEST-suivi-relance";
+    await auth("/api/entreprise", { method: "POST", body: JSON.stringify({ nom }) });
+    await auth("/api/echange", { method: "POST", body: JSON.stringify({ entreprise: nom, type: "mail", date: "2026-10-01" }) });
+    await auth("/api/relance-date", { method: "POST", body: JSON.stringify({ entreprise: nom, date: "2026-12-01" }) });
+    const mail = (await suivi()).interactions.find((i) => i.nom === nom && i.type === "mail")!;
+    await auth("/api/echange-modifier", { method: "POST", body: JSON.stringify({ id: String(mail.id), type: "mail", date: "2026-10-01", note: "x" }) });
+    expect((await suivi()).companies.find((c) => c.nom === nom)?.prochaine_relance).toBe("2026-12-01");
+  });
+
+  test("lettre renvoyée en brouillon: candidature auto retirée, candidature manuelle gardée", async () => {
+    const nom = "TEST-suivi-lettre";
+    await auth("/api/entreprise", { method: "POST", body: JSON.stringify({ nom }) });
+    await auth("/api/lettre", { method: "POST", body: JSON.stringify({ entreprise: nom, content: `---
+type: lettre
+entreprise: ${nom}
+statut: brouillon
+---
+
+x` }) });
+    await auth("/api/lettre-statut", { method: "POST", body: JSON.stringify({ entreprise: nom, statut: "envoyee", date: "2026-10-01" }) });
+    await auth("/api/echange", { method: "POST", body: JSON.stringify({ entreprise: nom, type: "candidature", date: "2026-10-01" }) });
+    await auth("/api/lettre-statut", { method: "POST", body: JSON.stringify({ entreprise: nom, statut: "brouillon" }) });
+    const restantes = await sql<{ auto: string | null }[]>`SELECT i.auto FROM interactions i JOIN companies c ON c.id = i.company_id WHERE c.nom = ${nom} AND i.type = 'candidature'`;
+    expect(restantes).toEqual([{ auto: null }]);
+  });
+
+  test("poste refusé + poste ouvert: entreprise pas fermée, états par poste", async () => {
+    const nom = "TEST-suivi-postes";
+    await auth("/api/entreprise", { method: "POST", body: JSON.stringify({ nom }) });
+    await auth("/api/poste", { method: "POST", body: JSON.stringify({ entreprise: nom, intitule: "A" }) });
+    const a = await posteDe(nom);
+    await auth("/api/poste", { method: "POST", body: JSON.stringify({ entreprise: nom, intitule: "B" }) });
+    const b = await posteDe(nom);
+    await auth("/api/statut", { method: "POST", body: JSON.stringify({ entreprise: nom, statut: "refuse", poste: String(a) }) });
+    await auth("/api/echange", { method: "POST", body: JSON.stringify({ entreprise: nom, type: "candidature", date: "2026-10-02", poste: String(b) }) });
+    const s = await suivi();
+    expect(s.companies.find((c) => c.nom === nom)?.statut).toBe("contacte");
+    expect(s.postes.find((p) => p.id === a)?.etat.statut).toBe("refuse");
+    expect(s.postes.find((p) => p.id === b)?.etat.statut).toBe("contacte");
+  });
 });
 
 describe("authRequired", () => {

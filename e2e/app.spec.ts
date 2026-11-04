@@ -121,6 +121,14 @@ test("clic droit sur une lettre: Supprimer la lettre", async ({ page }) => {
   await expect.poll(() => mock.calls.find((c) => c.path === "/api/lettre-supprimer")?.body).toEqual({ file: "mgdis.md" });
 });
 
+test("impression de la lettre: nom du PDF = nom de fichier du profil", async ({ page }) => {
+  const mock: Mock = { loggedIn: true, calls: [], extra: { profil: { ...PROFIL_VIDE, username: "BaptisteDechamp" } } };
+  await mockApi(page, mock);
+  await page.goto("/#/lettres/mgdis.md");
+  await page.getByRole("button", { name: "Imprimer" }).click();
+  await expect(page).toHaveTitle("Lettre_Motivation_BaptisteDechamp-MGDIS");
+});
+
 test("XSS: les notes d'entreprise sont affichées en texte, aucun script exécuté", async ({ page }) => {
   const mock: Mock = { loggedIn: true, calls: [] };
   await mockApi(page, mock);

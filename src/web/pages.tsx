@@ -205,6 +205,14 @@ function LettreView({ lettre, send, onTemplate, profil, onDirty }: { lettre: Let
     [data],
   );
   const title = fileName(profil.nom_fichier, { username: profil.username, entreprise: lettre.entreprise || lettre.file });
+  // Print names the PDF after the top document's title, not the iframe's <title>.
+  useEffect(() => {
+    const previous = document.title;
+    document.title = title;
+    return () => {
+      document.title = previous;
+    };
+  }, [title]);
   const remove = async () => {
     if (confirm(`Supprimer la lettre de ${lettre.entreprise || lettre.file} ?`) && (await send("lettre-supprimer", { file: lettre.file }))) location.hash = "#/lettres";
   };

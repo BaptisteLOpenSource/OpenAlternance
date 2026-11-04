@@ -83,6 +83,9 @@ async function desktopRoute(req: Request, path: string): Promise<Response> {
     // ponytail: fixed delay lets the reply flush; ack-based is exact.
     setTimeout(() => {
       try {
+        // Stale window would poll a dead server and, sharing the browser
+        // profile, swallow the relaunched app's window.
+        win?.kill();
         runInstaller(file);
       } catch (error) {
         log(error);

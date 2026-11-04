@@ -91,11 +91,16 @@ end;
 procedure InitializeWizard;
 var
   GuideLink: TNewLinkLabel;
+  Local: String;
 begin
   ModePage := CreateInputOptionPage(wpSelectDir,
     'Mode de stockage', 'Où garder vos données ?',
     'Ce choix se fait une fois ; tu peux réinstaller pour le changer.', True, False);
-  ModePage.Add('Sur ce PC uniquement (aucun compte, rien en ligne)');
+  Local := 'Sur ce PC uniquement (aucun compte, rien en ligne)';
+  // Kept by a previous uninstall: same path, the app reopens it as is.
+  if FileExists(ExpandConstant('{localappdata}\OpenAlternance\openalternance.db')) then
+    Local := Local + ' : base locale existante détectée, elle sera reprise';
+  ModePage.Add(Local);
   ModePage.Add('En ligne avec Neon (plusieurs PC + mobile)');
   if IsOnlineConfig then ModePage.SelectedValueIndex := 1
   else ModePage.SelectedValueIndex := 0;

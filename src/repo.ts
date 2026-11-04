@@ -169,7 +169,10 @@ export async function updateContact(
 // Contacts and interactions go with it: ON DELETE CASCADE in src/db.ts.
 export async function deleteCompany(companyNom: string): Promise<void> {
   const company = await findCompany(companyNom);
-  await sql`DELETE FROM companies WHERE id = ${company.id}`;
+  await sql.begin(async (tx) => {
+    await tx`DELETE FROM fichiers WHERE name = ${`logo-${company.id}`}`;
+    await tx`DELETE FROM companies WHERE id = ${company.id}`;
+  });
 }
 
 export async function setStatut(companyNom: string, statut: Statut): Promise<void> {

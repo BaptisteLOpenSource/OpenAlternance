@@ -388,6 +388,14 @@ describe("base de test (TEST_DATABASE_URL)", () => {
     logoDeps.lookup = logoDeps.fetch = undefined;
   });
 
+  test("entreprise supprimée -> son logo stocké aussi", async () => {
+    await auth("/api/entreprise", { method: "POST", body: JSON.stringify({ nom: "TEST-logo-suppr" }) });
+    const [{ id }] = await sql<{ id: number }[]>`SELECT id FROM companies WHERE nom = 'TEST-logo-suppr'`;
+    await repo.writeFichier(`logo-${id}`, new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
+    await auth("/api/entreprise-supprimer", { method: "POST", body: JSON.stringify({ entreprise: "TEST-logo-suppr" }) });
+    expect(await repo.hasFichier(`logo-${id}`)).toBe(false);
+  });
+
   test("logo stocké: servi par son type sniffé, même origine", async () => {
     await repo.writeFichier("logo-999999", new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
     const res = await auth("/api/logos/999999");

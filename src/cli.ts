@@ -99,6 +99,10 @@ try {
       ];
       for (const path of binaries) {
         const name = path.split("/").pop()!;
+        if (name.startsWith("doc-")) {
+          console.warn(`ignoré (préfixe doc- réservé): ${name}`);
+          continue;
+        }
         const file = Bun.file(path);
         if (!(await file.exists())) continue;
         const data = new Uint8Array(await file.arrayBuffer());

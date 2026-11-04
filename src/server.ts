@@ -1,6 +1,16 @@
 #!/usr/bin/env bun
 import { handle } from "./api";
 import index from "./web/index.html";
+import vercel from "../vercel.json";
+
+// Same headers and body cap as Vercel, single source: vercel.json.
+const MAX_BODY = 4.5 * 1024 * 1024;
+const [siteHeaders, apiHeaders] = vercel.headers.map((rule) => rule.headers);
+
+function secure(res: Response, path: string): Response {
+  for (const { key, value } of [...siteHeaders, ...(path.startsWith("/api/") ? apiHeaders : [])]) res.headers.set(key, value);
+  return res;
+}
 
 // Local dev only: Vercel serves dist/ (built by scripts/build.ts) for these files.
 const PUBLIC_DIR = "src/web/public";
@@ -22,15 +32,15 @@ export function startServer(opts: {
     hostname: "127.0.0.1",
     port: opts.port,
     idleTimeout: 0,
+    maxRequestBodySize: MAX_BODY,
     routes: { "/": index },
-    fetch(req, server) {
+    async fetch(req, server) {
       // DNS rebinding: foreign domain on 127.0.0.1 sends its own Host.
       if (!allowedHosts.has(req.headers.get("host") ?? "")) return new Response("Forbidden", { status: 403 });
       const path = new URL(req.url).pathname;
-      if (req.method === "GET" && PUBLIC_FILE.test(path)) return publicFile(path);
+      if (req.method === "GET" && PUBLIC_FILE.test(path)) return secure(await publicFile(path), path);
       const extra = opts.extra?.(req, path);
-      if (extra) return extra;
-      return handle(req, server.requestIP(req)?.address);
+      return secure(await (extra ?? handle(req, server.requestIP(req)?.address)), path);
     },
   });
 }

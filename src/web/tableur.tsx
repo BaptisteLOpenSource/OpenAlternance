@@ -1,9 +1,9 @@
 import { CircleCheck, ExternalLink } from "lucide-preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { type ContactField, type Statut, TABLEUR_COLUMNS, contactWrite, isRh, isWebUrl, missingFields, tableurRow, toTsv } from "../logic";
-import type { CompanyRow, Contact } from "../repo";
-import { CopyButton, type Send, StatutFilter, StatutSelect, sendFiche } from "./shared";
-import type { AppState } from "./store";
+import type { Company, Contact } from "../repo";
+import { CopyButton, type Send, StatutBadge, StatutFilter, StatutSelect, sendFiche } from "./shared";
+import type { AppState, Fiches } from "./store";
 import {
   Badge,
   Button,
@@ -23,7 +23,7 @@ import {
   cn,
 } from "./ui";
 
-type Row = { company: CompanyRow; contacts: Contact[]; missing: string[]; cells: string[] };
+type Row = { company: Company; contacts: Contact[]; missing: string[]; cells: string[] };
 type FicheKey = "secteur" | "adresse" | "code_postal" | "ville" | "domaine" | "annonce" | "actualite" | "note_google" | "contact_cv" | "notes";
 
 // Sheet index -> fiche field. Annonce edits the raw value, not the "Candidature spontanée" fallback.
@@ -38,7 +38,7 @@ const SUIVI_COLUMN: Record<number, "suivi_linkedin" | "suivi_insta" | "suivi_fac
 const CONTACT_FIELD: ContactField[] = ["nom", "prenom", "email", "tel", "linkedin"];
 const HEAD = "sticky top-0 z-20 bg-card whitespace-nowrap";
 
-const saveFiche = (send: Send, c: CompanyRow, key: string, value: string) =>
+const saveFiche = (send: Send, c: Company, key: string, value: string) =>
   sendFiche(send, c, { [key]: value });
 
 function saveContact(row: Row, rh: boolean, field: ContactField, value: string, send: Send) {
@@ -194,25 +194,38 @@ export function TableurPage({
   search,
   send,
   openCompany,
+  fiches,
+  loadFiches,
 }: {
   state: AppState;
   search: string;
   send: Send;
   openCompany: (id: number) => void;
+  fiches: Fiches;
+  loadFiches: () => void;
 }) {
   const [query, setQuery] = useState(search);
   const [statut, setStatut] = useState<Statut | "">("");
   const [missingOnly, setMissingOnly] = useState(false);
   useEffect(() => setQuery(search), [search]);
+  // Rows need every fiche; a write drops one, so reload them all at once.
+  const incomplete = state.companies.some((c) => !fiches[c.id]);
+  useEffect(() => {
+    if (incomplete) loadFiches();
+  }, [incomplete]);
 
-  const items: Row[] = state.companies.map((c) => {
+  const items: Row[] = state.companies.flatMap((c) => {
+    const full = fiches[c.id];
+    if (!full) return [];
     const contacts = state.contacts.filter((x) => x.company_id === c.id);
-    return {
-      company: c,
-      contacts,
-      missing: missingFields(c, contacts),
-      cells: tableurRow(c, contacts, state.interactions.filter((i) => i.company_id === c.id), state.today),
-    };
+    return [
+      {
+        company: full,
+        contacts,
+        missing: missingFields(full, contacts),
+        cells: tableurRow(full, contacts, state.interactions.filter((i) => i.company_id === c.id), state.today),
+      },
+    ];
   });
   const needle = query.trim().toLowerCase();
   const shown = items.filter(
@@ -291,7 +304,11 @@ export function TableurPage({
                     <CopyButton value={toTsv([r.cells])} />
                   </TableCell>
                   <TableCell>
-                    <StatutSelect company={r.company} send={send} />
+                    {state.postes.some((p) => p.company_id === r.company.id) ? (
+                      <StatutBadge statut={r.company.statut} />
+                    ) : (
+                      <StatutSelect company={r.company} statut={r.company.statut} send={send} />
+                    )}
                   </TableCell>
                   <TableCell>
                     {r.missing.length > 0 ? (

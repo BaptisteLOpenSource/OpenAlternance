@@ -411,7 +411,7 @@ function Header({
 }
 
 function App() {
-  const { state, error, locked, desktop, login, logout, backup, update, clearError, send, reload } = useStore();
+  const { state, fiches, loadFiche, loadFiches, error, locked, desktop, login, logout, backup, update, clearError, send, reload } = useStore();
   const route = useHash();
   const [updating, setUpdating] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -592,10 +592,10 @@ function App() {
                 (companyId === null ? (
                   <CompaniesPage state={state} search={search} send={send} onOpen={setDialog} openCompany={openCompany} filter={companiesFilter} onFilter={setCompaniesFilter} />
                 ) : (
-                  <CompanyPage state={state} id={companyId} send={send} onOpen={setDialog} />
+                  <CompanyPage state={state} id={companyId} send={send} onOpen={setDialog} fiches={fiches} loadFiche={loadFiche} />
                 ))}
               {page.path === "todo" && <TodoPage state={state} send={send} />}
-              {page.path === "tableur" && <TableurPage state={state} search={search} send={send} openCompany={openCompany} />}
+              {page.path === "tableur" && <TableurPage state={state} search={search} send={send} openCompany={openCompany} fiches={fiches} loadFiches={loadFiches} />}
               {page.path === "entretiens" && <EntretiensPage state={state} onOpen={setDialog} openCompany={openCompany} />}
               {page.path === "calendrier" && <CalendarPage state={state} openCompany={openCompany} />}
               {page.path === "lettres" && <LettresPage state={state} send={send} initial={page.path === "lettres" && sub ? decodeURIComponent(sub) : undefined} />}

@@ -3,8 +3,8 @@ import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
 import { STATUTS, type Statut, TYPES, fileName, weeklyCounts } from "../logic";
 import { BarChart, BarList, DataTable, type Datum } from "./charts";
-import { DeleteEchange, ECHANGE, EchangeBadge, RelanceBadge, STATUT, dotOf, type Open, type Send, StatutBadge, isOpen, relanceEnvoyee, shortDate } from "./shared";
-import type { AppState } from "./store";
+import { DeleteEchange, ECHANGE, EchangeBadge, RelanceBadge, STATUT, dotOf, type Open, type Send, StatutBadge, dueTrack, isOpen, relanceEnvoyee, shortDate } from "./shared";
+import type { AppState, CompanyEtat } from "./store";
 import {
   Button,
   Card,
@@ -94,8 +94,8 @@ export function DashboardPage({ state, send, openCompany, onOpen }: { state: App
   const due = companies.filter(isOpen).sort((a, b) => a.prochaine_relance!.localeCompare(b.prochaine_relance!));
   const late = due.filter((c) => c.prochaine_relance! <= today).length;
   const count = (s: Statut) => companies.filter((c) => c.statut === s).length;
-  const relancer = async (nom: string) => {
-    if (await relanceEnvoyee(send, nom)) setStatus(`Relance enregistrée : ${nom}`);
+  const relancer = async (c: CompanyEtat) => {
+    if (await relanceEnvoyee(send, c.nom, dueTrack(state, c))) setStatus(`Relance enregistrée : ${c.nom}`);
   };
 
   const weekly: Datum[] = weeklyCounts(
@@ -147,7 +147,7 @@ export function DashboardPage({ state, send, openCompany, onOpen }: { state: App
                       <ChevronRight aria-hidden="true" class="size-4 text-foreground/40 transition-transform group-hover/item:translate-x-1" />
                     </button>
                     <RelanceBadge company={c} today={today} />
-                    <Button variant="outline" size="sm" onClick={() => relancer(c.nom)}>
+                    <Button variant="outline" size="sm" onClick={() => relancer(c)}>
                       Relancé
                     </Button>
                   </li>

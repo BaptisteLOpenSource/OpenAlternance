@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { daysBetween, isoAgo, logoPalette } from "./logic";
-import { TABLEUR_COLUMNS, missingFields, tableurRow, toTsv, type TableurCompany, addDays, delaiDays, documentFile, isoDate, isWebUrl, parseFrontmatter, relanceForStatut, replayEchanges, setFrontmatter, slug, stripFrontmatter, relanceAfter, statutAfter, weeklyCounts } from "./logic";
+import { TABLEUR_COLUMNS, missingFields, tableurRow, toTsv, type TableurCompany, addDays, aggregateStatut, carry, delaiDays, documentFile, isoDate, isWebUrl, parseFrontmatter, relanceForStatut, replayEchanges, replayTracks, type Row, setFrontmatter, slug, stripFrontmatter, relanceAfter, statutAfter, weeklyCounts } from "./logic";
 import { NOM_FICHIER_DEFAUT, PROFIL_VIDE, contactWrite, fileName, fillProfil } from "./logic";
 
 test("réouvrir une entreprise fermée remet une relance à J+7", () => {
@@ -23,12 +23,55 @@ test("setFrontmatter remplace, ajoute, retire sans toucher au corps", () => {
   expect(setFrontmatter(content, { statut: "brouillon", date_envoi: "" })).toBe("---\ntype: lettre\nstatut: brouillon\n---\n\nCorps\n");
 });
 
+const rowOf = (partial: Partial<Row> & Pick<Row, "type" | "date">): Row => ({ delai: null, poste_id: null, statut: null, prochaine: null, ...partial });
+
 test("supprimer une relance remet statut et relance de l'échange précédent", () => {
-  const mail = { type: "mail" as const, date: "2026-10-01", delai: 7 };
-  const relance = { type: "relance" as const, date: "2026-10-13", delai: 7 };
-  expect(replayEchanges("relance", [mail, relance])).toEqual({ statut: "relance", prochaine: "2026-10-20" });
-  expect(replayEchanges("relance", [mail])).toEqual({ statut: "contacte", prochaine: "2026-10-08" });
-  expect(replayEchanges("contacte", [])).toEqual({ statut: "a_contacter", prochaine: null });
+  const mail = rowOf({ type: "mail", date: "2026-10-01", delai: 7 });
+  const relance = rowOf({ type: "relance", date: "2026-10-13", delai: 7 });
+  expect(replayEchanges([mail, relance])).toEqual({ statut: "relance", prochaine: "2026-10-20" });
+  expect(replayEchanges([mail])).toEqual({ statut: "contacte", prochaine: "2026-10-08" });
+  expect(replayEchanges([])).toEqual({ statut: "a_contacter", prochaine: null });
+});
+
+test("statut manuel gagne sur l'historique", () => {
+  expect(replayEchanges([rowOf({ type: "candidature", date: "2026-10-01", delai: 7 }), rowOf({ type: "statut", date: "2026-10-03", statut: "entretien" })])).toEqual({ statut: "entretien", prochaine: null });
+});
+
+test("statut manuel peut rouvrir une piste fermée, avec relance J+7", () => {
+  expect(replayEchanges([rowOf({ type: "statut", date: "2026-10-01", statut: "refuse" }), rowOf({ type: "statut", date: "2026-10-05", statut: "contacte" })])).toEqual({ statut: "contacte", prochaine: "2026-10-12" });
+});
+
+test("planif sans date arrête les relances, garde le statut", () => {
+  expect(replayEchanges([rowOf({ type: "candidature", date: "2026-10-01", delai: 7 }), rowOf({ type: "planif", date: "2026-10-02" })])).toEqual({ statut: "contacte", prochaine: null });
+});
+
+test("replayTracks: un état par poste, agrégat sur les pistes ouvertes", () => {
+  const rows = [
+    rowOf({ type: "reponse_defavorable", date: "2026-10-01", poste_id: 1 }),
+    rowOf({ type: "candidature", date: "2026-10-02", delai: 7, poste_id: 2 }),
+  ];
+  const { tracks, statut, prochaine } = replayTracks(rows, [1, 2]);
+  expect(tracks.get(1)).toEqual({ statut: "refuse", prochaine: null });
+  expect(tracks.get(2)).toEqual({ statut: "contacte", prochaine: "2026-10-09" });
+  expect(tracks.get(null)).toEqual({ statut: "a_contacter", prochaine: null });
+  expect(statut).toBe("contacte");
+  expect(prochaine).toBe("2026-10-09");
+});
+
+test("replayTracks: poste sans ligne = a_contacter, sans relance", () => {
+  expect(replayTracks([], [7]).tracks.get(7)).toEqual({ statut: "a_contacter", prochaine: null });
+});
+
+test("aggregateStatut: ouverte la plus avancée, sinon première fermée", () => {
+  expect(aggregateStatut(["refuse", "offre"])).toBe("offre");
+  expect(aggregateStatut(["a_contacter", "entretien"])).toBe("entretien");
+  expect(aggregateStatut(["refuse", "a_contacter"])).toBe("a_contacter");
+});
+
+test("carry: relance en retard reportée à aujourd'hui, fermée intacte", () => {
+  expect(carry("2026-10-01", "contacte", "2026-10-13")).toEqual({ prochaine: "2026-10-13", retard: 12 });
+  expect(carry("2026-10-01", "refuse", "2026-10-13")).toEqual({ prochaine: "2026-10-01", retard: 0 });
+  expect(carry("2026-10-20", "contacte", "2026-10-13")).toEqual({ prochaine: "2026-10-20", retard: 0 });
 });
 
 test("parseFrontmatter lit les clés simples entre les deux ---", () => {
@@ -59,13 +102,13 @@ test("réponse favorable -> entretien, défavorable -> refus, sans relance", () 
 test("relance optionnelle: délai null = pas de relance planifiée", () => {
   expect(relanceAfter("mail", "2026-10-13", null, null, "contacte")).toBeNull();
   expect(delaiDays(null)).toBeNull();
-  expect(replayEchanges("contacte", [{ type: "mail", date: "2026-10-01", delai: null }])).toEqual({ statut: "contacte", prochaine: null });
+  expect(replayEchanges([rowOf({ type: "mail", date: "2026-10-01", delai: null })])).toEqual({ statut: "contacte", prochaine: null });
 });
 
 test("pas d'alternant (indisponible) est fermé: pas de relance, un échange garde le statut", () => {
   expect(relanceForStatut("indisponible", "2026-10-30", "2026-10-14")).toBeNull();
   expect(statutAfter("mail", "indisponible")).toBe("indisponible");
-  expect(replayEchanges("indisponible", [{ type: "mail", date: "2026-10-01", delai: 7 }])).toEqual({ statut: "indisponible", prochaine: null });
+  expect(replayEchanges([rowOf({ type: "statut", date: "2026-09-30", statut: "indisponible" }), rowOf({ type: "mail", date: "2026-10-01", delai: 7 })])).toEqual({ statut: "indisponible", prochaine: null });
 });
 
 test("aucune relance sur une entreprise fermée (offre ou refus)", () => {
@@ -74,7 +117,7 @@ test("aucune relance sur une entreprise fermée (offre ou refus)", () => {
 });
 
 test("replayEchanges ne recrée pas de relance sur un refus", () => {
-  expect(replayEchanges("refuse", [{ type: "mail", date: "2026-10-01", delai: 7 }]).prochaine).toBeNull();
+  expect(replayEchanges([rowOf({ type: "statut", date: "2026-09-30", statut: "refuse" }), rowOf({ type: "mail", date: "2026-10-01", delai: 7 })]).prochaine).toBeNull();
 });
 
 test("isoDate accepte YYYY-MM-DD réel, refuse le reste", () => {

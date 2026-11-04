@@ -196,7 +196,7 @@ function LettreView({ lettre, send, onTemplate, profil, onDirty }: { lettre: Let
   useEffect(() => onDirty(dirty), [dirty]);
   const save = async () => {
     if (!dirty) return true;
-    const saved = isTemplate ? await send("template", { content: draft }) : await send("lettre", { file: lettre.file, content: draft });
+    const saved = (isTemplate ? await send("template", { content: draft }) : await send("lettre", { file: lettre.file, content: draft })) !== false;
     if (saved) load();
     return saved;
   };
@@ -311,13 +311,17 @@ export function LettresPage({ state, send, initial }: { state: AppState; send: S
     if (matchMedia("(max-width: 767px)").matches) el.scrollIntoView({ block: "start" });
   }, [file]);
   const letters = state.lettres.filter((l) => l.type === "lettre");
+  const lettreLabel = (l: Lettre) => {
+    const intitule = state.postes.find((p) => p.id === l.poste)?.intitule;
+    return intitule ? `${l.entreprise} · ${intitule}` : l.entreprise;
+  };
   const selected = state.lettres.find((l) => l.file === file);
   const [pick, setPick] = useState("");
   const [dirty, setDirty] = useState(false);
   const free = state.companies.filter((c) => !CLOSING_STATUTS.has(c.statut) && !lettreOf(c, state));
   const add = async () => {
     const company = state.companies.find((c) => c.nom === pick);
-    const created = company && (await createLettre(company, send, state.profil));
+    const created = company && (await createLettre(company, send, state));
     if (created) {
       select(created);
       setPick("");
@@ -370,7 +374,7 @@ export function LettresPage({ state, send, initial }: { state: AppState; send: S
                       aria-current={l.file === file ? "true" : undefined}
                       onClick={() => select(l.file)}
                     >
-                      {l.entreprise}
+                      {lettreLabel(l)}
                     </button>
                     <span class="block text-xs tabular-nums text-muted-foreground sm:hidden">{shortDate(l.date_envoi ?? null)}</span>
                   </TableCell>

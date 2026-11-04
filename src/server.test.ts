@@ -34,3 +34,20 @@ test("startServer: extra answers, null falls through to handle", async () => {
     server.stop(true);
   }
 });
+
+test("startServer: en-têtes de sécurité de vercel.json, corps trop gros refusé", async () => {
+  const port = 3292;
+  const server = startServer({ port });
+  try {
+    const base = `http://127.0.0.1:${port}`;
+    const res = await fetch(`${base}/api/state`);
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(res.headers.get("x-frame-options")).toBe("SAMEORIGIN");
+    expect(res.headers.get("content-security-policy")).toContain("default-src 'self'");
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    const big = await fetch(`${base}/api/pdf`, { method: "POST", body: "x".repeat(5 * 1024 * 1024) }).catch(() => null);
+    expect(big?.status ?? 413).toBe(413);
+  } finally {
+    server.stop(true);
+  }
+});

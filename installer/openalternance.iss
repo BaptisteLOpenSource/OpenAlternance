@@ -8,6 +8,9 @@
 AppId={{0332B991-D3C8-4B91-B5B0-2FEADE307490}
 AppName=OpenAlternance
 AppVersion={#AppVersion}
+AppPublisher=BaptisteLOpenSource
+AppPublisherURL=https://github.com/BaptisteLOpenSource/OpenAlternance
+VersionInfoCompany=BaptisteLOpenSource
 DefaultDirName={localappdata}\Programs\OpenAlternance
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest

@@ -1,7 +1,7 @@
 import { Ban, Check, CircleCheck, CircleDashed, CircleX, Copy, FileUp, Handshake, Hourglass, Mail, MessageSquare, Phone, Redo2, Send, Trash2, Trophy, UserX, X } from "lucide-preact";
 import { useState } from "preact/hooks";
 import { CLOSING_STATUTS, CONTRATS, type Contrat, FICHE_EXTRA, type FicheExtra, LETTRE_STATUTS, type InteractionType, type LettreStatut, STATUTS, type Statut, TYPES, today } from "../logic";
-import type { CompanyRow, Lettre } from "../repo";
+import type { Company, CompanyRow, Lettre } from "../repo";
 import type { Action, PosteEtat } from "./store";
 import { Select } from "./menus";
 import { ToggleGroup, useToast } from "./fx";
@@ -104,7 +104,7 @@ export const isTodo = (c: CompanyRow, today: string) => isOpen(c) && c.prochaine
 export const shortDate = (iso: string | null | undefined) =>
   iso ? new Date(`${iso}T00:00`).toLocaleDateString("fr-FR", { day: "numeric", month: "short" }) : "-";
 
-export const ficheOf = (company: CompanyRow) => ({
+export const ficheOf = (company: Company) => ({
   ville: company.ville ?? "",
   site: company.site ?? "",
   notes: company.notes ?? "",
@@ -122,7 +122,7 @@ export const ficheOf = (company: CompanyRow) => ({
 // fiche is a full replace. Stale render snapshot must not drop
 // a field still in flight from the previous save.
 const inFlight = new Map<string, Record<string, string>>();
-export async function sendFiche(send: Send, company: CompanyRow, changes: Record<string, string>): Promise<boolean> {
+export async function sendFiche(send: Send, company: Company, changes: Record<string, string>): Promise<boolean> {
   const payload = { entreprise: company.nom, ...ficheOf(company), ...inFlight.get(company.nom), ...changes };
   inFlight.set(company.nom, payload);
   const ok = (await send("fiche", payload)) !== false;
@@ -254,7 +254,7 @@ export function CopyButton({ value }: { value: string }) {
 }
 
 // Without poste: spontanée track (company header, lists). With poste: that poste's état.
-export const StatutSelect = ({ company, poste, send }: { company: CompanyRow; poste?: PosteEtat; send: Send }) => (
+export const StatutSelect = ({ company, poste, send }: { company: Pick<CompanyRow, "nom" | "statut">; poste?: PosteEtat; send: Send }) => (
   <Select
     value={poste ? poste.etat.statut : company.statut}
     aria-label={poste ? `Statut du poste ${poste.intitule}` : `Statut de ${company.nom}`}

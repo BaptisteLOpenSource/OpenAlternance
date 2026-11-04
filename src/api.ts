@@ -242,6 +242,13 @@ async function file(name: string, type: string, headers: Record<string, string> 
 
 async function handleGet(path: string): Promise<Response> {
   if (path === "/api/state") return json(await state());
+  if (path === "/api/fiches") return json(await repo.listFiches());
+  if (path.startsWith("/api/fiches/")) {
+    const id = path.slice("/api/fiches/".length);
+    if (!/^\d+$/.test(id)) return notFound();
+    const fiche = await repo.getFiche(Number(id));
+    return fiche ? json(fiche) : notFound();
+  }
   if (path === "/api/cv.pdf") return file("cv.pdf", "application/pdf");
   if (path === "/api/logo.png") return file("logo.png", "image/png");
   if (path === "/api/logo.svg") return file("logo.svg", "image/svg+xml", SVG_HEADERS);

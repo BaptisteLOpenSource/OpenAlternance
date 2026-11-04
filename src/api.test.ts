@@ -197,10 +197,10 @@ describe("base de test (TEST_DATABASE_URL)", () => {
   test("XSS dans les notes -> stockées telles quelles, servies en JSON", async () => {
     const payload = "<script>alert(1)</script>";
     await auth("/api/entreprise", { method: "POST", body: JSON.stringify({ nom: "TEST-xss", notes: payload }) });
-    const res = await auth("/api/state");
+    const res = await auth("/api/fiches");
     expect(res.headers.get("content-type")).toContain("application/json");
-    const state = (await res.json()) as { companies: { nom: string; notes: string }[] };
-    expect(state.companies.find((c) => c.nom === "TEST-xss")?.notes).toBe(payload);
+    const fiches = (await res.json()) as { nom: string; notes: string }[];
+    expect(fiches.find((c) => c.nom === "TEST-xss")?.notes).toBe(payload);
   });
 
   test("site javascript: refusé (schéma http/https seulement)", async () => {
@@ -530,6 +530,22 @@ describe("base de test (TEST_DATABASE_URL)", () => {
   test("entreprise-supprimer inconnue -> 400", async () => {
     const res = await auth("/api/entreprise-supprimer", { method: "POST", body: JSON.stringify({ entreprise: "TEST-inconnue" }) });
     expect(res.status).toBe(400);
+  });
+
+  test("state: liste légère sans champs de fiche; fiche complète par id et en bloc", async () => {
+    await auth("/api/entreprise", { method: "POST", body: JSON.stringify({ nom: "TEST-fiche" }) });
+    await auth("/api/fiche", { method: "POST", body: JSON.stringify({ entreprise: "TEST-fiche", note_google: "4,5" }) });
+    const [{ id }] = await sql<{ id: number }[]>`SELECT id FROM companies WHERE nom = 'TEST-fiche'`;
+    const state = (await (await auth("/api/state")).json()) as { companies: Record<string, unknown>[] };
+    const lean = state.companies.find((c) => c.nom === "TEST-fiche")!;
+    expect(lean).not.toHaveProperty("note_google");
+    expect(lean).not.toHaveProperty("notes");
+    const one = await auth(`/api/fiches/${id}`);
+    expect(one.status).toBe(200);
+    expect(await one.json()).toMatchObject({ id, nom: "TEST-fiche", note_google: "4,5" });
+    const all = (await (await auth("/api/fiches")).json()) as { nom: string; note_google: string | null }[];
+    expect(all.find((c) => c.nom === "TEST-fiche")?.note_google).toBe("4,5");
+    expect((await auth("/api/fiches/999999")).status).toBe(404);
   });
 
   type Etat = {

@@ -12,17 +12,33 @@ const company = {
   statut: "a_contacter",
   prochaine_relance: null,
   notes: "<img src=x onerror=\"window.__xss=1\">",
+  note_google: "4,5",
   logo: null,
   poste: "Dev",
   publication: null,
   candidatures: null,
   reponses: null,
   mail: null,
+  retard: 0,
   derniere_interaction: null,
   contacts: [],
 };
 
 const grizzlead = { ...company, id: 2, nom: "Grizzlead", ville: "Auray", contacts: [] };
+
+const listRow = (c: typeof company) => ({
+  id: c.id,
+  nom: c.nom,
+  ville: c.ville,
+  site: c.site,
+  statut: c.statut,
+  prochaine_relance: c.prochaine_relance,
+  retard: c.retard,
+  logo: c.logo,
+  poste: c.poste,
+  derniere_interaction: c.derniere_interaction,
+  contacts: c.contacts,
+});
 
 const postes = [
   { id: 1, company_id: 1, intitule: "Dev web", contrat: "alternance", annonce: null, publication: null, candidatures: null, reponses: null, agence_id: null, etat: { statut: "entretien", prochaine: null } },
@@ -40,7 +56,7 @@ const echanges = [
 
 const state = (lettres: unknown[] = [], extra: Record<string, unknown> = {}) => ({
   today: "2026-10-13",
-  companies: [company, grizzlead],
+  companies: [company, grizzlead].map(listRow),
   contacts: [],
   postes,
   agences,
@@ -71,6 +87,9 @@ async function mockApi(page: Page, mock: Mock) {
     if (!mock.loggedIn) return json({ error: "Connexion requise" }, 401);
     if (path === "/api/state") return json(state([{ file: "mgdis.md", type: "lettre", entreprise: "MGDIS", statut: "brouillon" }], mock.extra));
     if (path === "/api/lettre") return json({ ...state(), file: "mgdis-data.md" });
+    if (path === "/api/fiches") return json([company, grizzlead]);
+    if (path === "/api/fiches/1") return json(company);
+    if (path === "/api/fiches/2") return json(grizzlead);
     if (path === "/api/mgdis.md" || path.startsWith("/api/lettres/")) {
       return json({ content: "# Bonjour", html: "<h1>Bonjour</h1>" });
     }
@@ -218,6 +237,23 @@ test("postes: intitulés, contrats et agence affichés sur la fiche entreprise",
   await expect(page.getByText("Data", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("CDI", { exact: true })).toBeVisible();
   await expect(page.getByText("Auray", { exact: true }).first()).toBeVisible();
+});
+
+test("fiche: chargée à la demande par /api/fiches/:id, affichée sur la page entreprise", async ({ page }) => {
+  const mock: Mock = { loggedIn: true, calls: [] };
+  await mockApi(page, mock);
+  await page.goto("/#/entreprises/1");
+  await expect(page.getByLabel("Note Google")).toHaveValue("4,5");
+  expect(mock.calls.some((c) => c.path === "/api/fiches/1")).toBe(true);
+});
+
+test("tableur: toutes les fiches en un seul GET /api/fiches", async ({ page }) => {
+  const mock: Mock = { loggedIn: true, calls: [] };
+  await mockApi(page, mock);
+  await page.goto("/#/tableur");
+  await expect(page.getByRole("row").filter({ hasText: "MGDIS" }).first()).toBeVisible();
+  expect(mock.calls.filter((c) => c.path === "/api/fiches")).toHaveLength(1);
+  expect(mock.calls.some((c) => c.path.startsWith("/api/fiches/"))).toBe(false);
 });
 
 test("poste: ajout via le dialogue -> POST /api/poste", async ({ page }) => {

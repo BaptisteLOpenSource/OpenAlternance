@@ -421,17 +421,31 @@ export async function mergeCompanies(sourceNom: string, targetNom: string): Prom
   });
 }
 
-export type CompanyRow = Company & { derniere_interaction: string | null; contacts: string[] };
+// Lean on purpose: /api/state ships every company on each write.
+export type CompanyRow = Pick<Company, "id" | "nom" | "ville" | "site" | "statut" | "prochaine_relance" | "retard" | "logo" | "poste"> & {
+  derniere_interaction: string | null;
+  contacts: string[];
+};
 
 export async function listCompanies(): Promise<CompanyRow[]> {
-  const companies = await sql<(Company & { derniere_interaction: string | null })[]>`
-    SELECT c.*, (SELECT MAX(date) FROM interactions i WHERE i.company_id = c.id) AS derniere_interaction
+  const companies = await sql<Omit<CompanyRow, "contacts">[]>`
+    SELECT c.id, c.nom, c.ville, c.site, c.statut, c.prochaine_relance, c.retard, c.logo, c.poste,
+      (SELECT MAX(date) FROM interactions i WHERE i.company_id = c.id) AS derniere_interaction
     FROM companies c ORDER BY c.nom`;
   const contacts = await listContacts();
   return companies.map((company) => ({
     ...company,
     contacts: contacts.filter((contact) => contact.company_id === company.id).map((contact) => contact.nom),
   }));
+}
+
+export async function listFiches(): Promise<Company[]> {
+  return sql<Company[]>`SELECT * FROM companies ORDER BY nom`;
+}
+
+export async function getFiche(id: number): Promise<Company | null> {
+  const [company] = await sql<Company[]>`SELECT * FROM companies WHERE id = ${id}`;
+  return company ?? null;
 }
 
 export async function listContacts(): Promise<Contact[]> {

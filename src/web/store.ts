@@ -1,6 +1,6 @@
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { type Profil, type Statut, logoPalette } from "../logic";
-import type { Agence, CompanyRow, Contact, DocumentRow, Interaction, Lettre, Poste } from "../repo";
+import type { Agence, Company, CompanyRow, Contact, DocumentRow, Interaction, Lettre, Poste } from "../repo";
 
 // etat: this poste's track, replayed by the API from history (spontanée track is not sent).
 export type PosteEtat = Poste & { etat: { statut: Statut; prochaine: string | null } };
@@ -115,6 +115,14 @@ export const fetchLogo = () =>
     )
     .catch(() => ((logo = undefined), "")));
 
+export type Fiches = Record<number, Company>;
+
+// null: the write names no company, so every fiche is dropped.
+const touchedIds = (companies: CompanyRow[], fields: Record<string, string>): number[] | null => {
+  const names = [fields.entreprise, fields.source, fields.cible].filter(Boolean);
+  return names.length === 0 ? null : companies.filter((c) => names.includes(c.nom)).map((c) => c.id);
+};
+
 export type DesktopInfo = { mode: "local" | "online"; version: string; update: { version: string; url: string } | null };
 
 export function useStore() {
@@ -122,16 +130,38 @@ export function useStore() {
   const [error, setError] = useState<string | null>(null);
   const [locked, setLocked] = useState(false);
   const [desktop, setDesktop] = useState<DesktopInfo | null>(null);
+  const [fiches, setFiches] = useState<Fiches>({});
+  // A fetch overlapping a write may be stale: refetch instead of caching it.
+  const writes = useRef(0);
+
+  const failure = (e: unknown) => (e instanceof Unauthorized ? setLocked(true) : setError(String((e as Error).message)));
+  const dropFiches = (ids: number[] | null) => {
+    writes.current++;
+    setFiches((all) => (ids === null ? {} : Object.fromEntries(Object.entries(all).filter(([id]) => !ids.includes(Number(id))))));
+  };
+  const loadFiche = (id: number): void => {
+    const at = writes.current;
+    request<Company>(`/api/fiches/${id}`)
+      .then((fiche) => (writes.current === at ? setFiches((all) => ({ ...all, [id]: fiche })) : loadFiche(id)))
+      .catch(failure);
+  };
+  const loadFiches = (): void => {
+    const at = writes.current;
+    request<Company[]>("/api/fiches")
+      .then((all) => (writes.current === at ? setFiches(Object.fromEntries(all.map((c) => [c.id, c]))) : loadFiches()))
+      .catch(failure);
+  };
 
   // Overdue relances are pulled to today on load; server UPDATE is idempotent, so reloads are harmless.
   const load = () =>
     request<AppState>("/api/state")
       .then((next) => (next.companies.some((c) => c.prochaine_relance !== null && c.prochaine_relance < next.today) ? post("/api/reporter", {}) : next))
       .then((next) => {
+        dropFiches(null);
         setState(next);
         setLocked(false);
       })
-      .catch((e) => (e instanceof Unauthorized ? setLocked(true) : setError(String(e.message))));
+      .catch(failure);
 
   // 404 outside the desktop process: stay null, no error shown.
   useEffect(() => {
@@ -148,8 +178,11 @@ export function useStore() {
   }, []);
 
   async function send(action: Action, fields: Record<string, string>): Promise<boolean | string> {
+    const ids = touchedIds(state?.companies ?? [], fields);
+    writes.current++;
     try {
       const next = await post(`/api/${action}`, fields);
+      dropFiches(ids);
       setState(next);
       setError(null);
       return next.file ?? true;
@@ -193,5 +226,5 @@ export function useStore() {
     }
   }
 
-  return { state, error, locked, desktop, login, logout, backup, update, clearError: () => setError(null), send, reload: load };
+  return { state, fiches, loadFiche, loadFiches, error, locked, desktop, login, logout, backup, update, clearError: () => setError(null), send, reload: load };
 }

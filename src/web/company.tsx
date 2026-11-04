@@ -6,7 +6,7 @@ import type { CompanyRow, Interaction, Lettre } from "../repo";
 import { deleteLettre, lettreOf, openLettre } from "./commands";
 import { Select } from "./menus";
 import { CONTRAT_LABEL, CopyButton, DeleteEchange, EchangeBadge, LettreStatutControl, dotOf, type Open, RelanceBadge, ficheOf, RelanceControls, STATUT, type Send, StatutSelect, isOpen, sendFiche, shortDate } from "./shared";
-import { type AppState, fetchLettre } from "./store";
+import { type AppState, type Fiches, fetchLettre } from "./store";
 import { Badge, Button, Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle, cn } from "./ui";
 
 const bare =
@@ -132,10 +132,30 @@ function LettreEditor({ lettre, send }: { lettre: Lettre; send: Send }) {
   );
 }
 
-export function CompanyPage({ state, id, send, onOpen }: { state: AppState; id: number; send: Send; onOpen: Open }) {
+export function CompanyPage({
+  state,
+  id,
+  send,
+  onOpen,
+  fiches,
+  loadFiche,
+}: {
+  state: AppState;
+  id: number;
+  send: Send;
+  onOpen: Open;
+  fiches: Fiches;
+  loadFiche: (id: number) => void;
+}) {
   const [filtre, setFiltre] = useState("");
   const company = state.companies.find((c) => c.id === id);
+  const full = fiches[id];
+  useEffect(() => {
+    if (!full) loadFiche(id);
+  }, [id, full]);
   if (!company) return <p class="text-sm text-muted-foreground">Entreprise introuvable.</p>;
+  // sendFiche saves the whole fiche: no field edit before it is loaded.
+  if (!full) return <p class="text-sm text-muted-foreground">Chargement de la fiche...</p>;
   const contacts = state.contacts.filter((k) => k.company_id === id);
   const history = state.interactions.filter((i) => i.company_id === id);
   const postes = state.postes.filter((p) => p.company_id === id);
@@ -147,10 +167,10 @@ export function CompanyPage({ state, id, send, onOpen }: { state: AppState; id: 
   const lettre = lettreOf(company, state);
   const cover =
     company.statut === "offre" ? "from-success/30" : company.statut === "refuse" ? "from-destructive/25" : "from-info/25";
-  const fiche = ficheOf(company);
+  const fiche = ficheOf(full);
   const saveField = (key: keyof typeof fiche) => (e: { currentTarget: HTMLInputElement | HTMLTextAreaElement }) => {
     const value = e.currentTarget.value.trim();
-    if (value !== fiche[key]) sendFiche(send, company, { [key]: value });
+    if (value !== fiche[key]) sendFiche(send, full, { [key]: value });
   };
 
   return (
@@ -418,7 +438,7 @@ export function CompanyPage({ state, id, send, onOpen }: { state: AppState; id: 
                   aria-label="Canal"
                   options={MAIL_CANAUX}
                   value={fiche.mail_canal}
-                  onChange={(v) => sendFiche(send, company, { mail_canal: v })}
+                  onChange={(v) => sendFiche(send, full, { mail_canal: v })}
                 />
                 <input
                   class={cn(bareInput, "min-w-40 flex-1 font-medium")}
@@ -544,7 +564,7 @@ export function CompanyPage({ state, id, send, onOpen }: { state: AppState; id: 
                         type="checkbox"
                         class="size-4 accent-primary"
                         checked={fiche[key] === "oui"}
-                        onChange={(e) => sendFiche(send, company, { [key]: e.currentTarget.checked ? "oui" : "" })}
+                        onChange={(e) => sendFiche(send, full, { [key]: e.currentTarget.checked ? "oui" : "" })}
                       />
                       {SUIVI_LABELS[key]}
                     </label>

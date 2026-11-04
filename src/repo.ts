@@ -1,4 +1,4 @@
-import { sql } from "./db";
+import { isUniqueViolation, sql } from "./db";
 import {
   CLOSING_STATUTS,
   type DocFormat,
@@ -24,7 +24,7 @@ import {
 } from "./logic";
 
 const SAFE_NAME = /^[\w.-]+\.md$/;
-const SAFE_DOCUMENT = /^[\w.-]+\.(md|txt|html)$/;
+const SAFE_DOCUMENT = /^[\w.-]+\.(md|txt|html|pdf)$/;
 
 export type DocumentRow = { name: string; format: DocFormat };
 const TEMPLATE_FILE = "_template.md";
@@ -87,7 +87,7 @@ export async function addCompany(
   try {
     await sql`INSERT INTO companies (nom, ville, site, notes) VALUES (${nom}, ${fields.ville ?? null}, ${site(fields.site)}, ${fields.notes ?? null})`;
   } catch (error) {
-    if ((error as { code?: string }).code === "23505") throw new Error(`Entreprise déjà existante: ${nom}`);
+    if (isUniqueViolation(error)) throw new Error(`Entreprise déjà existante: ${nom}`);
     throw error;
   }
 }
@@ -260,7 +260,7 @@ export async function renameCompany(companyNom: string, nom: string): Promise<vo
       }
     });
   } catch (error) {
-    if ((error as { code?: string }).code === "23505") throw new Error(`Entreprise déjà existante: ${nom}`);
+    if (isUniqueViolation(error)) throw new Error(`Entreprise déjà existante: ${nom}`);
     throw error;
   }
 }
@@ -363,9 +363,17 @@ export async function setProfil(fields: Profil): Promise<void> {
       adresse = EXCLUDED.adresse, site = EXCLUDED.site, nom_fichier = EXCLUDED.nom_fichier`;
 }
 
+// Lettres PDF only: the CV and uploaded document PDFs have their own place in the UI.
 export async function listPdfs(): Promise<string[]> {
-  const rows = await sql<{ name: string }[]>`SELECT name FROM fichiers WHERE name LIKE '%.pdf' ORDER BY name`;
+  const rows = await sql<{ name: string }[]>`SELECT name FROM fichiers
+    WHERE name LIKE '%.pdf' AND name <> 'cv.pdf' AND name NOT IN (SELECT name FROM documents)
+    ORDER BY name`;
   return rows.map((row) => row.name);
+}
+
+export async function writeFichier(name: string, data: Uint8Array): Promise<void> {
+  await sql`INSERT INTO fichiers (name, data) VALUES (${name}, ${data})
+    ON CONFLICT (name) DO UPDATE SET data = EXCLUDED.data`;
 }
 
 export async function readFichier(name: string): Promise<Uint8Array | null> {
@@ -389,7 +397,21 @@ export async function addDocument(name: string, format: DocFormat, content: stri
   try {
     await sql`INSERT INTO documents (name, format, content) VALUES (${name}, ${format}, ${content})`;
   } catch (error) {
-    if ((error as { code?: string }).code === "23505") throw new Error(`Document déjà existant: ${name}`);
+    if (isUniqueViolation(error)) throw new Error(`Document déjà existant: ${name}`);
+    throw error;
+  }
+}
+
+// Document PDF: its bytes live in fichiers under the same name, both rows or none.
+export async function addPdfDocument(name: string, data: Uint8Array): Promise<void> {
+  if (!SAFE_DOCUMENT.test(name)) throw new Error(`nom de document invalide: ${name}`);
+  try {
+    await sql.begin(async (tx) => {
+      await tx`INSERT INTO documents (name, format, content) VALUES (${name}, 'pdf', '')`;
+      await tx`INSERT INTO fichiers (name, data) VALUES (${name}, ${data})`;
+    });
+  } catch (error) {
+    if (isUniqueViolation(error)) throw new Error(`Document déjà existant: ${name}`);
     throw error;
   }
 }
@@ -400,6 +422,9 @@ export async function updateDocument(name: string, content: string): Promise<voi
 }
 
 export async function deleteDocument(name: string): Promise<void> {
-  const [deleted] = await sql<{ name: string }[]>`DELETE FROM documents WHERE name = ${name} RETURNING name`;
-  if (!deleted) throw new Error(`Document introuvable: ${name}`);
+  await sql.begin(async (tx) => {
+    const [deleted] = await tx<DocumentRow[]>`DELETE FROM documents WHERE name = ${name} RETURNING name, format`;
+    if (!deleted) throw new Error(`Document introuvable: ${name}`);
+    if (deleted.format === "pdf") await tx`DELETE FROM fichiers WHERE name = ${name}`;
+  });
 }

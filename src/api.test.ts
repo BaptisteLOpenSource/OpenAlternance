@@ -268,6 +268,50 @@ describe("base de test (TEST_DATABASE_URL)", () => {
     expect((await auth("/api/fichiers/..%2Fcv.txt")).status).toBe(404);
   });
 
+  const PDF_B64 = Buffer.from("%PDF-1.4\n%test\n").toString("base64");
+
+  test("document PDF: stocké tel quel, format pdf, hors liste PDF importés", async () => {
+    const res = await auth("/api/document-pdf", { method: "POST", body: JSON.stringify({ titre: "docpdftest", data: PDF_B64 }) });
+    expect(res.status).toBe(200);
+    const state = (await res.json()) as { documents: { name: string; format: string }[]; pdfs: string[] };
+    expect(state.documents).toContainEqual({ name: "docpdftest.pdf", format: "pdf" });
+    expect(state.pdfs).not.toContain("docpdftest.pdf");
+    const served = await auth("/api/fichiers/docpdftest.pdf");
+    expect(served.headers.get("content-type")).toBe("application/pdf");
+    expect(Buffer.from(await served.arrayBuffer()).toString("latin1")).toBe("%PDF-1.4\n%test\n");
+  });
+
+  test("document PDF: titre déjà pris -> 400", async () => {
+    const res = await auth("/api/document-pdf", { method: "POST", body: JSON.stringify({ titre: "docpdftest", data: PDF_B64 }) });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toMatch(/Document déjà existant/);
+  });
+
+  test("document PDF: supprimer le document supprime le fichier", async () => {
+    await auth("/api/document-supprimer", { method: "POST", body: JSON.stringify({ name: "docpdftest.pdf" }) });
+    expect((await auth("/api/fichiers/docpdftest.pdf")).status).toBe(404);
+  });
+
+  test("CV: non PDF -> 400, rien écrit", async () => {
+    const res = await auth("/api/cv", { method: "POST", body: JSON.stringify({ data: "aGVsbG8=" }) });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toBe("fichier PDF invalide");
+    expect((await auth("/api/cv.pdf")).status).toBe(404);
+  });
+
+  test("CV: PDF -> servi, absent de PDF importés", async () => {
+    const res = await auth("/api/cv", { method: "POST", body: JSON.stringify({ data: PDF_B64 }) });
+    expect(res.status).toBe(200);
+    const state = (await res.json()) as { pdfs: string[] };
+    expect(state.pdfs).not.toContain("cv.pdf");
+    expect((await auth("/api/cv.pdf")).status).toBe(200);
+  });
+
+  test("document-texte: PDF absent -> 400", async () => {
+    const res = await auth("/api/document-texte", { method: "POST", body: JSON.stringify({ name: "absent.pdf" }) });
+    expect(res.status).toBe(400);
+  });
+
   test("rate limit: 10 échecs puis 429", async () => {
     await sql`DELETE FROM login_attempts`;
     for (let i = 0; i < 10; i++) await login("raté");

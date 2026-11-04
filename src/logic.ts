@@ -12,7 +12,7 @@ export type Statut = (typeof STATUTS)[number];
 export type InteractionType = (typeof TYPES)[number];
 
 export const CLOSING_STATUTS: ReadonlySet<Statut> = new Set(["offre", "refuse", "sans_reponse", "indisponible"]);
-export const DOC_FORMATS = ["md", "txt", "html"] as const;
+export const DOC_FORMATS = ["md", "txt", "html", "pdf"] as const;
 export type DocFormat = (typeof DOC_FORMATS)[number];
 
 // Statut set by hand: a chasing statut without a date gets one a week out (reopening a closed company).
@@ -21,7 +21,7 @@ export function relanceForStatut(statut: Statut, current: string | null, today: 
   return current ?? addDays(today, 7);
 }
 
-export function documentFile(titre: string, format: "md" | "txt" | "html"): string {
+export function documentFile(titre: string, format: DocFormat): string {
   const base = slug(titre);
   if (!base) throw new Error("titre invalide");
   return `${base}.${format}`;

@@ -22,6 +22,14 @@ export function authRequired(env: Record<string, string | undefined>): boolean {
 // Key embeds password fingerprint: old-password sessions stop matching.
 const sessionKey = (cookieToken: string): string => `${digest(PASSWORD).toString("hex").slice(0, 16)}.${cookieToken}`;
 
+// Base64 in JSON: size cap, then magic check. Nothing is stored before both pass.
+function pdfBytes(data: string): Uint8Array {
+  if (data.length > MAX_PDF_BASE64) throw new Error("PDF trop volumineux (3 Mo max)");
+  const bytes = Buffer.from(data, "base64");
+  if (bytes.subarray(0, 5).toString("latin1") !== "%PDF-") throw new Error("fichier PDF invalide");
+  return new Uint8Array(bytes);
+}
+
 const json = (body: unknown, status = 200, headers?: HeadersInit) => Response.json(body, { status, headers });
 const notFound = () => json({ error: "Introuvable" }, 404);
 
@@ -116,14 +124,14 @@ const ACTIONS: Record<string, (required: Field, optional: (name: string) => stri
     const format = oneOf(required("format"), ["md", "txt"] as const, "format");
     return repo.addDocument(documentFile(required("titre"), format), format, optional("content") ?? "");
   },
-  // PDF text becomes HTML here; nothing from the PDF is stored as markup.
-  "document-pdf": async (required) => {
-    const data = required("data");
-    if (data.length > MAX_PDF_BASE64) throw new Error("PDF trop volumineux (3 Mo max)");
-    const bytes = Buffer.from(data, "base64");
-    if (bytes.subarray(0, 5).toString("latin1") !== "%PDF-") throw new Error("fichier PDF invalide");
-    await repo.addDocument(documentFile(required("titre"), "html"), "html", await pdfToHtml(new Uint8Array(bytes)));
+  "document-pdf": async (required) => repo.addPdfDocument(documentFile(required("titre"), "pdf"), pdfBytes(required("data"))),
+  "document-texte": async (required) => {
+    const name = required("name");
+    const data = SAFE_FICHIER.test(name) ? await repo.readFichier(name) : null;
+    if (!data) throw new Error(`PDF introuvable: ${name}`);
+    await repo.addDocument(`${name.slice(0, -".pdf".length)}.html`, "html", await pdfToHtml(data));
   },
+  cv: async (required) => repo.writeFichier("cv.pdf", pdfBytes(required("data"))),
   "document-modifier": (required) => repo.updateDocument(required("name"), required("content")),
   "document-supprimer": (required) => repo.deleteDocument(required("name")),
   "entreprise-supprimer": (required) => repo.deleteCompany(required("entreprise")),

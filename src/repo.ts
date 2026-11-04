@@ -2,6 +2,7 @@ import { isUniqueViolation, sql } from "./db";
 import { fetchLogo } from "./logo";
 import {
   CLOSING_STATUTS,
+  type Contrat,
   type DocFormat,
   type FicheExtra,
   type InteractionType,
@@ -61,6 +62,29 @@ export type Contact = {
   linkedin: string | null;
 };
 
+export type Agence = {
+  id: number;
+  company_id: number;
+  ville: string;
+  adresse: string | null;
+  code_postal: string | null;
+};
+
+export type Poste = {
+  id: number;
+  company_id: number;
+  intitule: string;
+  contrat: Contrat;
+  annonce: string | null;
+  publication: string | null;
+  candidatures: string | null;
+  reponses: string | null;
+  agence_id: number | null;
+};
+
+export type PosteFields = { intitule: string; contrat?: Contrat; annonce?: string; publication?: string; agenceId?: number };
+export type AgenceFields = { ville: string; adresse?: string; code_postal?: string };
+
 export type Interaction = {
   id: number;
   company_id: number;
@@ -68,6 +92,7 @@ export type Interaction = {
   date: string;
   note: string | null;
   delai: number | null;
+  poste_id: number | null;
 };
 
 export async function findCompany(nom: string): Promise<Company> {
@@ -101,10 +126,23 @@ export async function addContact(
   await sql`INSERT INTO contacts (company_id, nom, role, email, telephone, linkedin) VALUES (${company.id}, ${fields.nom}, ${fields.role ?? null}, ${fields.email ?? null}, ${fields.tel ?? null}, ${site(fields.linkedin, "linkedin")})`;
 }
 
+// Foreign keys alone accept another company's row: check ownership here.
+async function assertPoste(tx: typeof sql, companyId: number, posteId: number | null | undefined): Promise<void> {
+  if (posteId == null) return;
+  const [poste] = await tx`SELECT 1 AS ok FROM postes WHERE id = ${posteId} AND company_id = ${companyId}`;
+  if (!poste) throw new Error("Poste introuvable");
+}
+
+async function assertAgence(tx: typeof sql, companyId: number, agenceId: number | null | undefined): Promise<void> {
+  if (agenceId == null) return;
+  const [agence] = await tx`SELECT 1 AS ok FROM agences WHERE id = ${agenceId} AND company_id = ${companyId}`;
+  if (!agence) throw new Error("Agence introuvable");
+}
+
 export async function logInteraction(
   companyNom: string,
   type: InteractionType,
-  fields: { date?: string; delai?: string | null; note?: string },
+  fields: { date?: string; delai?: string | null; note?: string; posteId?: number },
 ): Promise<void> {
   const date = isoDate(fields.date ?? today());
   const delai = delaiDays(fields.delai);
@@ -116,7 +154,8 @@ export async function logInteraction(
     if (dup) throw new Error(`relance déjà enregistrée le ${date} pour ${company.nom}`);
   }
   await sql.begin(async (tx) => {
-    await tx`INSERT INTO interactions (company_id, type, date, note, delai) VALUES (${company.id}, ${type}, ${date}, ${fields.note ?? null}, ${delai})`;
+    await assertPoste(tx, company.id, fields.posteId);
+    await tx`INSERT INTO interactions (company_id, type, date, note, delai, poste_id) VALUES (${company.id}, ${type}, ${date}, ${fields.note ?? null}, ${delai}, ${fields.posteId ?? null})`;
     await tx`UPDATE companies SET statut = ${statut}, prochaine_relance = ${relance}, retard = 0 WHERE id = ${company.id}`;
   });
 }
@@ -140,20 +179,69 @@ export async function deleteInteraction(id: number): Promise<void> {
 
 export async function updateInteraction(
   id: number,
-  fields: { type: InteractionType; date: string; delai: number | null; note?: string },
+  fields: { type: InteractionType; date: string; delai: number | null; note?: string; posteId?: number },
 ): Promise<void> {
   await sql.begin(async (tx) => {
     const [updated] = await tx<{ company_id: number }[]>`
-      UPDATE interactions SET type = ${fields.type}, date = ${fields.date}, delai = ${fields.delai}, note = ${fields.note ?? null}
+      UPDATE interactions SET type = ${fields.type}, date = ${fields.date}, delai = ${fields.delai}, note = ${fields.note ?? null}, poste_id = ${fields.posteId ?? null}
       WHERE id = ${id} RETURNING company_id`;
     if (!updated) throw new Error(`échange introuvable: ${id}`);
+    await assertPoste(tx, updated.company_id, fields.posteId);
     await replayCompany(tx, updated.company_id);
   });
 }
 
+// Table is a literal from this module, never user input.
+async function deleteById(table: "contacts" | "postes" | "agences", id: number, label: string): Promise<void> {
+  const [deleted] = await sql<{ id: number }[]>`DELETE FROM ${sql(table)} WHERE id = ${id} RETURNING id`;
+  if (!deleted) throw new Error(`${label} introuvable: ${id}`);
+}
+
 export async function deleteContact(id: number): Promise<void> {
-  const [deleted] = await sql<{ id: number }[]>`DELETE FROM contacts WHERE id = ${id} RETURNING id`;
-  if (!deleted) throw new Error(`contact introuvable: ${id}`);
+  await deleteById("contacts", id, "contact");
+}
+
+export async function addPoste(companyNom: string, fields: PosteFields): Promise<number> {
+  const company = await findCompany(companyNom);
+  await assertAgence(sql, company.id, fields.agenceId);
+  const [row] = await sql<{ id: number }[]>`INSERT INTO postes (company_id, intitule, contrat, annonce, publication, agence_id)
+    VALUES (${company.id}, ${fields.intitule}, ${fields.contrat ?? "alternance"}, ${site(fields.annonce, "annonce")}, ${fields.publication ?? null}, ${fields.agenceId ?? null})
+    RETURNING id`;
+  return row.id;
+}
+
+export async function updatePoste(id: number, fields: PosteFields): Promise<void> {
+  const [poste] = await sql<{ company_id: number }[]>`SELECT company_id FROM postes WHERE id = ${id}`;
+  if (!poste) throw new Error(`poste introuvable: ${id}`);
+  await assertAgence(sql, poste.company_id, fields.agenceId);
+  await sql`UPDATE postes SET intitule = ${fields.intitule}, contrat = ${fields.contrat ?? "alternance"}, annonce = ${site(fields.annonce, "annonce")},
+    publication = ${fields.publication ?? null}, agence_id = ${fields.agenceId ?? null} WHERE id = ${id}`;
+}
+
+export const deletePoste = (id: number) => deleteById("postes", id, "poste");
+
+export async function listPostes(): Promise<Poste[]> {
+  return sql<Poste[]>`SELECT id, company_id, intitule, contrat, annonce, publication, candidatures, reponses, agence_id FROM postes ORDER BY intitule`;
+}
+
+export async function addAgence(companyNom: string, fields: AgenceFields): Promise<number> {
+  const company = await findCompany(companyNom);
+  const [row] = await sql<{ id: number }[]>`INSERT INTO agences (company_id, ville, adresse, code_postal)
+    VALUES (${company.id}, ${fields.ville}, ${fields.adresse ?? null}, ${fields.code_postal ?? null}) RETURNING id`;
+  return row.id;
+}
+
+export async function updateAgence(id: number, fields: AgenceFields): Promise<void> {
+  const [updated] = await sql<{ id: number }[]>`
+    UPDATE agences SET ville = ${fields.ville}, adresse = ${fields.adresse ?? null}, code_postal = ${fields.code_postal ?? null}
+    WHERE id = ${id} RETURNING id`;
+  if (!updated) throw new Error(`agence introuvable: ${id}`);
+}
+
+export const deleteAgence = (id: number) => deleteById("agences", id, "agence");
+
+export async function listAgences(): Promise<Agence[]> {
+  return sql<Agence[]>`SELECT id, company_id, ville, adresse, code_postal FROM agences ORDER BY ville`;
 }
 
 export async function updateContact(
@@ -316,7 +404,7 @@ export async function listContacts(): Promise<Contact[]> {
 
 export async function listInteractions(): Promise<(Interaction & { nom: string })[]> {
   return sql<(Interaction & { nom: string })[]>`
-    SELECT i.id, i.company_id, i.type, i.date, i.note, i.delai, c.nom
+    SELECT i.id, i.company_id, i.type, i.date, i.note, i.delai, i.poste_id, c.nom
     FROM interactions i JOIN companies c ON c.id = i.company_id ORDER BY i.date`;
 }
 

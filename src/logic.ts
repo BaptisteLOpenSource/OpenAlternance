@@ -7,6 +7,8 @@ export const FICHE_EXTRA = [...FICHE_TEXTES, ...SUIVIS] as const;
 export type FicheExtra = (typeof FICHE_EXTRA)[number];
 export const LETTRE_STATUTS = ["brouillon", "envoyee"] as const;
 export type LettreStatut = (typeof LETTRE_STATUTS)[number];
+export const CONTRATS = ["alternance", "stage", "cdd", "cdi", "interim"] as const;
+export type Contrat = (typeof CONTRATS)[number];
 
 export type Statut = (typeof STATUTS)[number];
 export type InteractionType = (typeof TYPES)[number];

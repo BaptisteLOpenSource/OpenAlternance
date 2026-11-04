@@ -1,6 +1,6 @@
 import { SESSION_DAYS, clearSessionCookie, digest, newSessionToken, passwordMatches, sessionCookie, sessionTokenFrom } from "./auth";
 import { sql } from "./db";
-import { FICHE_TEXTES, LETTRE_STATUTS, MAIL_CANAUX, NOM_FICHIER_DEFAUT, STATUTS, SUIVIS, TYPES, delaiDays, documentFile, isoAgo, isoDate, oneOf, stripFrontmatter, today } from "./logic";
+import { CONTRATS, FICHE_TEXTES, LETTRE_STATUTS, MAIL_CANAUX, NOM_FICHIER_DEFAUT, STATUTS, SUIVIS, TYPES, delaiDays, documentFile, isoAgo, isoDate, oneOf, stripFrontmatter, today } from "./logic";
 import { MAX_PDF_BASE64, pdfToHtml, renderDocument } from "./documents";
 import { logoType } from "./logo";
 import * as repo from "./repo";
@@ -51,9 +51,11 @@ async function isAuthenticated(req: Request): Promise<boolean> {
 }
 
 const state = async () => {
-  const [companies, contacts, interactions, lettres, pdfs, documents, profil, cv] = await Promise.all([
+  const [companies, contacts, postes, agences, interactions, lettres, pdfs, documents, profil, cv] = await Promise.all([
     repo.listCompanies(),
     repo.listContacts(),
+    repo.listPostes(),
+    repo.listAgences(),
     repo.listInteractions(),
     repo.listLettres(),
     repo.listPdfs(),
@@ -61,10 +63,33 @@ const state = async () => {
     repo.getProfil(),
     repo.hasFichier("cv.pdf"),
   ]);
-  return { today: today(), companies, contacts, interactions, lettres, pdfs, documents, profil, cv };
+  return { today: today(), companies, contacts, postes, agences, interactions, lettres, pdfs, documents, profil, cv };
 };
 
 type Field = (name: string) => string;
+type Optional = (name: string) => string | undefined;
+
+const refId = (optional: Optional, name: string): number | undefined => {
+  const value = optional(name);
+  return value ? Number(value) : undefined;
+};
+
+const posteFields = (required: Field, optional: Optional) => {
+  const contrat = optional("contrat");
+  return {
+    intitule: required("intitule"),
+    contrat: contrat ? oneOf(contrat, CONTRATS, "contrat") : undefined,
+    annonce: optional("annonce"),
+    publication: optional("publication"),
+    agenceId: refId(optional, "agence"),
+  };
+};
+
+const agenceFields = (required: Field, optional: Optional) => ({
+  ville: required("ville"),
+  adresse: optional("adresse"),
+  code_postal: optional("code_postal"),
+});
 
 // Emptied is a valid save; a missing key is a client bug and must not wipe the text.
 const content = (body: Record<string, unknown>): string => {
@@ -76,7 +101,7 @@ const content = (body: Record<string, unknown>): string => {
 const delaiField = (body: Record<string, unknown>, optional: (name: string) => string | undefined) =>
   "delai" in body ? (optional("delai") ?? null) : undefined;
 
-const ACTIONS: Record<string, (required: Field, optional: (name: string) => string | undefined, body: Record<string, unknown>) => Promise<void>> = {
+const ACTIONS: Record<string, (required: Field, optional: Optional, body: Record<string, unknown>) => Promise<unknown>> = {
   entreprise: (required, optional) =>
     repo.addCompany(required("nom"), { ville: optional("ville"), site: optional("site"), notes: optional("notes") }),
   personne: (required, optional) =>
@@ -92,7 +117,14 @@ const ACTIONS: Record<string, (required: Field, optional: (name: string) => stri
       date: optional("date"),
       delai: delaiField(body, optional),
       note: optional("note"),
+      posteId: refId(optional, "poste"),
     }),
+  poste: (required, optional) => repo.addPoste(required("entreprise"), posteFields(required, optional)),
+  "poste-modifier": (required, optional) => repo.updatePoste(Number(required("id")), posteFields(required, optional)),
+  "poste-supprimer": (required) => repo.deletePoste(Number(required("id"))),
+  agence: (required, optional) => repo.addAgence(required("entreprise"), agenceFields(required, optional)),
+  "agence-modifier": (required, optional) => repo.updateAgence(Number(required("id")), agenceFields(required, optional)),
+  "agence-supprimer": (required) => repo.deleteAgence(Number(required("id"))),
   fiche: (required, optional) =>
     repo.updateCompany(required("entreprise"), {
       ville: optional("ville"),
@@ -116,6 +148,7 @@ const ACTIONS: Record<string, (required: Field, optional: (name: string) => stri
       date: isoDate(required("date")),
       delai: delaiDays(delaiField(body, optional)),
       note: optional("note"),
+      posteId: refId(optional, "poste"),
     }),
   "personne-supprimer": (required) => repo.deleteContact(Number(required("id"))),
   "personne-modifier": (required, optional) =>

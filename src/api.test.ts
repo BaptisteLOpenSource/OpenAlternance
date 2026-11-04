@@ -515,6 +515,77 @@ describe("base de test (TEST_DATABASE_URL)", () => {
     const res = await auth("/api/entreprise-supprimer", { method: "POST", body: JSON.stringify({ entreprise: "TEST-inconnue" }) });
     expect(res.status).toBe(400);
   });
+
+  type Etat = {
+    postes: { id: number; intitule: string; contrat: string; annonce: string | null; agence_id: number | null }[];
+    agences: { id: number; ville: string }[];
+    interactions: { nom: string; poste_id: number | null }[];
+  };
+  const etat = async () => (await (await auth("/api/state")).json()) as Etat;
+  const posteDe = async (nom: string) => {
+    const [row] = await sql<{ id: number }[]>`SELECT p.id FROM postes p JOIN companies c ON c.id = p.company_id WHERE c.nom = ${nom} ORDER BY p.id DESC LIMIT 1`;
+    return row!.id;
+  };
+
+  test("poste: créer, modifier, supprimer -> état à jour", async () => {
+    await auth("/api/entreprise", { method: "POST", body: JSON.stringify({ nom: "TEST-postes" }) });
+    const cree = await auth("/api/poste", { method: "POST", body: JSON.stringify({ entreprise: "TEST-postes", intitule: "Dev", contrat: "stage", annonce: "https://x.example/dev" }) });
+    expect(cree.status).toBe(200);
+    const id = await posteDe("TEST-postes");
+    expect((await etat()).postes.find((p) => p.id === id)).toMatchObject({ intitule: "Dev", contrat: "stage", annonce: "https://x.example/dev" });
+    const modifie = await auth("/api/poste-modifier", { method: "POST", body: JSON.stringify({ id: String(id), intitule: "Data", contrat: "cdi" }) });
+    expect(modifie.status).toBe(200);
+    expect((await etat()).postes.find((p) => p.id === id)).toMatchObject({ intitule: "Data", contrat: "cdi" });
+    expect((await auth("/api/poste-supprimer", { method: "POST", body: JSON.stringify({ id: String(id) }) })).status).toBe(200);
+    expect((await etat()).postes.some((p) => p.id === id)).toBe(false);
+  });
+
+  test("poste: contrat hors liste ou annonce non http -> 400", async () => {
+    const contrat = await auth("/api/poste", { method: "POST", body: JSON.stringify({ entreprise: "TEST-postes", intitule: "X", contrat: "freelance" }) });
+    expect(contrat.status).toBe(400);
+    const annonce = await auth("/api/poste", { method: "POST", body: JSON.stringify({ entreprise: "TEST-postes", intitule: "X", annonce: "javascript:alert(1)" }) });
+    expect(annonce.status).toBe(400);
+  });
+
+  test("échange avec un poste d'une autre entreprise -> 400", async () => {
+    await auth("/api/entreprise", { method: "POST", body: JSON.stringify({ nom: "TEST-poste-a" }) });
+    await auth("/api/entreprise", { method: "POST", body: JSON.stringify({ nom: "TEST-poste-b" }) });
+    await auth("/api/poste", { method: "POST", body: JSON.stringify({ entreprise: "TEST-poste-a", intitule: "Dev" }) });
+    const res = await auth("/api/echange", { method: "POST", body: JSON.stringify({ entreprise: "TEST-poste-b", type: "mail", poste: String(await posteDe("TEST-poste-a")) }) });
+    expect(res.status).toBe(400);
+  });
+
+  test("poste supprimé -> ses échanges restent, sans poste", async () => {
+    await auth("/api/entreprise", { method: "POST", body: JSON.stringify({ nom: "TEST-poste-suppr" }) });
+    await auth("/api/poste", { method: "POST", body: JSON.stringify({ entreprise: "TEST-poste-suppr", intitule: "Dev" }) });
+    const id = await posteDe("TEST-poste-suppr");
+    await auth("/api/echange", { method: "POST", body: JSON.stringify({ entreprise: "TEST-poste-suppr", type: "mail", poste: String(id) }) });
+    expect((await etat()).interactions.find((i) => i.nom === "TEST-poste-suppr")?.poste_id).toBe(id);
+    await auth("/api/poste-supprimer", { method: "POST", body: JSON.stringify({ id: String(id) }) });
+    expect((await etat()).interactions.find((i) => i.nom === "TEST-poste-suppr")?.poste_id).toBeNull();
+  });
+
+  test("agence: créer, modifier, lier à un poste, supprimer -> poste au siège", async () => {
+    await auth("/api/entreprise", { method: "POST", body: JSON.stringify({ nom: "TEST-agences" }) });
+    const cree = await auth("/api/agence", { method: "POST", body: JSON.stringify({ entreprise: "TEST-agences", ville: "TEST-Rennes", code_postal: "35000" }) });
+    expect(cree.status).toBe(200);
+    const agenceId = (await etat()).agences.find((a) => a.ville === "TEST-Rennes")!.id;
+    expect((await auth("/api/agence-modifier", { method: "POST", body: JSON.stringify({ id: String(agenceId), ville: "TEST-Lyon" }) })).status).toBe(200);
+    expect((await etat()).agences.find((a) => a.id === agenceId)?.ville).toBe("TEST-Lyon");
+    await auth("/api/poste", { method: "POST", body: JSON.stringify({ entreprise: "TEST-agences", intitule: "Dev", agence: String(agenceId) }) });
+    const posteId = await posteDe("TEST-agences");
+    expect((await etat()).postes.find((p) => p.id === posteId)?.agence_id).toBe(agenceId);
+    await auth("/api/agence-supprimer", { method: "POST", body: JSON.stringify({ id: String(agenceId) }) });
+    expect((await etat()).postes.find((p) => p.id === posteId)?.agence_id).toBeNull();
+  });
+
+  test("poste avec une agence d'une autre entreprise -> 400", async () => {
+    await auth("/api/entreprise", { method: "POST", body: JSON.stringify({ nom: "TEST-agence-autre" }) });
+    await auth("/api/agence", { method: "POST", body: JSON.stringify({ entreprise: "TEST-agence-autre", ville: "TEST-Nantes" }) });
+    const agenceId = (await etat()).agences.find((a) => a.ville === "TEST-Nantes")!.id;
+    const res = await auth("/api/poste", { method: "POST", body: JSON.stringify({ entreprise: "TEST-agences", intitule: "X", agence: String(agenceId) }) });
+    expect(res.status).toBe(400);
+  });
 });
 
 describe("authRequired", () => {

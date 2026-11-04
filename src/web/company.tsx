@@ -5,7 +5,7 @@ import { CLOSING_STATUTS, FICHE_TEXTES, MAIL_CANAUX, SUIVIS, isWebUrl } from "..
 import type { CompanyRow, Lettre } from "../repo";
 import { lettreOf, openLettre } from "./commands";
 import { Select } from "./menus";
-import { CopyButton, DeleteEchange, LettreStatutControl, type Open, RelanceBadge, ficheOf, RelanceControls, STATUT, type Send, StatutSelect, isOpen, sendFiche, shortDate } from "./shared";
+import { CopyButton, DeleteEchange, EchangeBadge, LettreStatutControl, dotOf, type Open, RelanceBadge, ficheOf, RelanceControls, STATUT, type Send, StatutSelect, isOpen, sendFiche, shortDate } from "./shared";
 import { type AppState, fetchLettre } from "./store";
 import { Button, Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle, cn } from "./ui";
 
@@ -41,7 +41,7 @@ const SUIVI_LABELS: Record<(typeof SUIVIS)[number], string> = {
 
 const etat = (c: CompanyRow) =>
   CLOSING_STATUTS.has(c.statut)
-    ? { label: `Terminé · ${STATUT[c.statut].label.toLowerCase()}`, dot: STATUT[c.statut].dot }
+    ? { label: `Terminé · ${STATUT[c.statut].label.toLowerCase()}`, dot: dotOf(STATUT[c.statut]) }
     : c.statut === "a_contacter"
       ? { label: "Pas commencé", dot: "bg-muted-foreground" }
       : { label: "En cours", dot: "bg-info" };
@@ -308,7 +308,7 @@ export function CompanyPage({ state, id, send, onOpen }: { state: AppState; id: 
                     <span aria-hidden="true" class="absolute -left-[1.3rem] top-1.5 size-2 rounded-full bg-primary" />
                     <div>
                       <p>
-                        <span class="font-medium">{i.type}</span>{" "}
+                        <EchangeBadge type={i.type} />{" "}
                         <span class="tabular-nums text-muted-foreground">{shortDate(i.date)}</span>
                       </p>
                       {i.note && <p class="text-muted-foreground">{i.note}</p>}

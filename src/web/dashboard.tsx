@@ -3,10 +3,9 @@ import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
 import { STATUTS, type Statut, TYPES, fileName, weeklyCounts } from "../logic";
 import { BarChart, BarList, DataTable, type Datum } from "./charts";
-import { DeleteEchange, RelanceBadge, STATUT, type Open, type Send, StatutBadge, isOpen, relanceEnvoyee, shortDate } from "./shared";
+import { DeleteEchange, ECHANGE, EchangeBadge, RelanceBadge, STATUT, dotOf, type Open, type Send, StatutBadge, isOpen, relanceEnvoyee, shortDate } from "./shared";
 import type { AppState } from "./store";
 import {
-  Badge,
   Button,
   Card,
   CardAction,
@@ -104,8 +103,8 @@ export function DashboardPage({ state, send, openCompany, onOpen }: { state: App
     today,
     12,
   ).map((w) => ({ label: shortDate(w.week), value: w.count }));
-  const pipeline: Datum[] = STATUTS.map((s) => ({ label: STATUT[s].label, value: count(s) }));
-  const types: Datum[] = TYPES.map((t) => ({ label: t, value: interactions.filter((i) => i.type === t).length }))
+  const pipeline: Datum[] = STATUTS.map((s) => ({ label: STATUT[s].label, value: count(s), color: dotOf(STATUT[s]) }));
+  const types: Datum[] = TYPES.map((t) => ({ label: ECHANGE[t].label, value: interactions.filter((i) => i.type === t).length, color: dotOf(ECHANGE[t]) }))
     .filter((d) => d.value > 0)
     .sort((a, b) => b.value - a.value);
 
@@ -201,7 +200,7 @@ export function DashboardPage({ state, send, openCompany, onOpen }: { state: App
                       {i.note && <span class="block max-w-[10rem] truncate text-xs font-normal text-muted-foreground sm:hidden">{i.note}</span>}
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline">{i.type}</Badge>
+                      <EchangeBadge type={i.type} />
                     </TableCell>
                     <TableCell class="hidden max-w-[10rem] truncate text-muted-foreground sm:table-cell sm:max-w-md" title={i.note ?? undefined}>
                       {i.note}

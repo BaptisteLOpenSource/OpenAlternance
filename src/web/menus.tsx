@@ -89,6 +89,7 @@ export function Select({
   class: className,
   "aria-label": ariaLabel,
   renderValue,
+  renderOption,
 }: {
   options: readonly Option[];
   value?: string;
@@ -97,6 +98,7 @@ export function Select({
   class?: string;
   "aria-label"?: string;
   renderValue?: (value: string) => ComponentChildren;
+  renderOption?: (value: string) => ComponentChildren;
 }) {
   const items = options.map(toOption);
   const initial = value ?? items[0]?.value ?? "";
@@ -146,7 +148,7 @@ export function Select({
           className,
         )}
       >
-        {renderValue ? renderValue(current) : <span class="truncate">{label}</span>}
+        {renderValue ? renderValue(current) : renderOption ? renderOption(current) : <span class="truncate">{label}</span>}
         {!renderValue && <ChevronDown class="size-4 shrink-0 opacity-50" />}
       </button>
       {anchor && (
@@ -164,7 +166,7 @@ export function Select({
               onClick={() => pick(o.value)}
             >
               <Check class={cn("size-4 shrink-0", o.value !== current && "invisible")} />
-              <span class="truncate">{o.label}</span>
+              {renderOption ? renderOption(o.value) : <span class="truncate">{o.label}</span>}
             </button>
           ))}
         </Popup>

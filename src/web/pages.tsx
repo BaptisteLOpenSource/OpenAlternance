@@ -4,7 +4,7 @@ import { CLOSING_STATUTS, LETTRE_STATUTS, type Profil, MOIS_MIN, escapeHtml, fil
 import type { Lettre } from "../repo";
 import { createLettre, lettreOf } from "./commands";
 import { Select } from "./menus";
-import { CopyButton, LETTRE_LABEL, LettreStatutControl, type Send, isOpen, lettreStatut, shortDate } from "./shared";
+import { CopyButton, LETTRE_LABEL, echangeLabel, LettreStatutControl, type Send, isOpen, lettreStatut, shortDate } from "./shared";
 import { type AppState, fetchLettre, fetchLogo } from "./store";
 import {
   Badge,
@@ -32,7 +32,7 @@ export function CalendarPage({ state, openCompany }: { state: AppState; openComp
     const map = new Map<string, { relance: boolean; label: string; companyId: number }[]>();
     const push = (date: string, relance: boolean, label: string, companyId: number) =>
       map.set(date, [...(map.get(date) ?? []), { relance, label, companyId }]);
-    for (const i of state.interactions) push(i.date, false, `${i.type} · ${i.nom}`, i.company_id);
+    for (const i of state.interactions) push(i.date, false, `${echangeLabel(i.type)} · ${i.nom}`, i.company_id);
     for (const c of state.companies.filter(isOpen)) push(c.prochaine_relance!, true, `relance · ${c.nom}`, c.id);
     return map;
   }, [state]);

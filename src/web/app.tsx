@@ -615,7 +615,9 @@ function App() {
 }
 
 // Module code, not inline script: keeps the CSP free of 'unsafe-inline' for scripts.
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js");
+// Desktop: server down = app closed, an offline cache only serves dead chunks.
+if (location.hostname === "127.0.0.1") navigator.serviceWorker?.getRegistrations().then((all) => all.forEach((sw) => sw.unregister()));
+else if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js");
 render(
   <ToastProvider>
     <App />

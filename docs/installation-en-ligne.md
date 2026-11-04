@@ -53,7 +53,7 @@ Sans `DATABASE_URL` Postgres, toutes les routes `/api` répondent 500 sur Vercel
 
 ## Liste de contrôle sécurité
 
-- `vercel.json` pose déjà CSP, HSTS, `X-Frame-Options: DENY` et `nosniff`.
+- `vercel.json` pose déjà CSP, HSTS, `X-Frame-Options: SAMEORIGIN` et `nosniff` (iframes PDF même origine seulement).
 - Limite de débit : 10 connexions échouées par 15 minutes et par IP, basée sur l'en-tête `X-Forwarded-For` posé par Vercel (valable uniquement derrière Vercel).
 - Mot de passe de 16 caractères minimum, imposé : sinon toutes les routes `/api` répondent 500.
 - Sessions de 30 jours stockées côté serveur ; la déconnexion les révoque.

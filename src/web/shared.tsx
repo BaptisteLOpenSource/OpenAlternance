@@ -1,11 +1,11 @@
-import { Ban, Check, Copy, Trash2, X } from "lucide-preact";
+import { Ban, Check, CircleCheck, CircleDashed, CircleX, Copy, FileUp, Handshake, Hourglass, Mail, MessageSquare, Phone, Redo2, Send, Trash2, Trophy, UserX, X } from "lucide-preact";
 import { useState } from "preact/hooks";
 import { CLOSING_STATUTS, FICHE_EXTRA, type FicheExtra, LETTRE_STATUTS, type InteractionType, type LettreStatut, STATUTS, type Statut, today } from "../logic";
 import type { CompanyRow, Lettre } from "../repo";
 import type { Action } from "./store";
 import { Select } from "./menus";
 import { ToggleGroup, useToast } from "./fx";
-import { Badge, type BadgeVariant, Button, Dialog, Input, cn } from "./ui";
+import { Badge, type BadgeVariant, Button, Dialog, Input } from "./ui";
 
 export const stored = (key: string) => {
   try {
@@ -37,16 +37,51 @@ export const writeHidden = (ids: string[]) => store(HIDDEN_KEY, JSON.stringify(i
 export const LETTRE_LABEL: Record<LettreStatut, string> = { brouillon: "Brouillon", envoyee: "Envoyée" };
 export const lettreStatut = (lettre: Lettre): LettreStatut => (lettre.statut === "envoyee" ? "envoyee" : "brouillon");
 
-export const STATUT: Record<Statut, { label: string; variant: BadgeVariant; dot: string }> = {
-  a_contacter: { label: "À contacter", variant: "outline", dot: "bg-muted-foreground" },
-  contacte: { label: "Contacté", variant: "info", dot: "bg-info" },
-  relance: { label: "Relancé", variant: "warning", dot: "bg-warning" },
-  entretien: { label: "Entretien", variant: "secondary", dot: "bg-foreground" },
-  offre: { label: "Offre", variant: "success", dot: "bg-success" },
-  refuse: { label: "Refusé", variant: "destructive", dot: "bg-destructive" },
-  sans_reponse: { label: "Pas de réponse", variant: "outline", dot: "bg-muted-foreground" },
-  indisponible: { label: "Pas d'alternant", variant: "outline", dot: "bg-muted-foreground" },
+// Semantic tone: success = positive, warning = waiting, destructive = negative, info = standard action.
+type Tag = { label: string; variant: BadgeVariant; icon: typeof Mail };
+const DOT: Record<BadgeVariant, string> = {
+  default: "bg-primary",
+  secondary: "bg-foreground",
+  outline: "bg-muted-foreground",
+  destructive: "bg-destructive",
+  warning: "bg-warning",
+  success: "bg-success",
+  info: "bg-info",
 };
+export const dotOf = (tag: Tag) => DOT[tag.variant];
+
+export const STATUT: Record<Statut, Tag> = {
+  a_contacter: { label: "À contacter", variant: "outline", icon: CircleDashed },
+  contacte: { label: "Contacté", variant: "info", icon: Send },
+  relance: { label: "Relancé", variant: "warning", icon: Redo2 },
+  entretien: { label: "Entretien", variant: "success", icon: Handshake },
+  offre: { label: "Offre", variant: "success", icon: Trophy },
+  refuse: { label: "Refusé", variant: "destructive", icon: CircleX },
+  sans_reponse: { label: "Pas de réponse", variant: "warning", icon: Hourglass },
+  indisponible: { label: "Pas d'alternant", variant: "outline", icon: UserX },
+};
+
+export const ECHANGE: Record<InteractionType, Tag> = {
+  mail: { label: "Email", variant: "info", icon: Mail },
+  appel: { label: "Appel", variant: "info", icon: Phone },
+  candidature: { label: "Candidature", variant: "info", icon: Send },
+  relance: { label: "Relance", variant: "warning", icon: Redo2 },
+  entretien: { label: "Entretien", variant: "success", icon: Handshake },
+  reponse: { label: "Réponse", variant: "outline", icon: MessageSquare },
+  reponse_favorable: { label: "Réponse favorable", variant: "success", icon: CircleCheck },
+  reponse_defavorable: { label: "Réponse défavorable", variant: "destructive", icon: CircleX },
+  depot: { label: "CV déposé", variant: "info", icon: FileUp },
+};
+export const echangeLabel = (type: string) => ECHANGE[type as InteractionType]?.label ?? type;
+
+export const TagBadge = ({ tag, class: className }: { tag: Tag; class?: string }) => (
+  <Badge variant={tag.variant} class={className}>
+    <tag.icon aria-hidden="true" />
+    {tag.label}
+  </Badge>
+);
+export const EchangeBadge = ({ type }: { type: string }) =>
+  type in ECHANGE ? <TagBadge tag={ECHANGE[type as InteractionType]} /> : <Badge variant="outline">{type}</Badge>;
 
 export const formFields = (form: HTMLFormElement) =>
   Object.fromEntries([...new FormData(form)].map(([k, v]) => [k, typeof v === "string" ? v : v.name]));
@@ -156,10 +191,7 @@ export function RelanceControls({ company, send }: { company: CompanyRow; send: 
 }
 
 export const StatutBadge = ({ statut, class: className }: { statut: Statut; class?: string }) => (
-  <Badge variant={STATUT[statut].variant} class={className}>
-    <span class={cn("size-1.5 rounded-full", STATUT[statut].dot)} />
-    {STATUT[statut].label}
-  </Badge>
+  <TagBadge tag={STATUT[statut]} class={className} />
 );
 
 export function DeleteEchange({ echange, send }: { echange: { id: number; type: string; date: string }; send: Send }) {
@@ -170,7 +202,7 @@ export function DeleteEchange({ echange, send }: { echange: { id: number; type: 
       aria-label="Supprimer l'échange"
       onClick={(e) => {
         e.stopPropagation();
-        if (confirm(`Supprimer l'échange « ${echange.type} » du ${shortDate(echange.date)} ?`)) {
+        if (confirm(`Supprimer l'échange « ${echangeLabel(echange.type)} » du ${shortDate(echange.date)} ?`)) {
           send("echange-supprimer", { id: String(echange.id) });
         }
       }}
@@ -221,6 +253,7 @@ export const StatutSelect = ({ company, send }: { company: CompanyRow; send: Sen
     value={company.statut}
     aria-label={`Statut de ${company.nom}`}
     options={STATUTS.map((s) => ({ value: s, label: STATUT[s].label }))}
+    renderOption={(s) => <StatutBadge statut={s as Statut} />}
     renderValue={(s) => <StatutBadge statut={s as Statut} class="pr-1.5" />}
     onChange={(statut) => send("statut", { entreprise: company.nom, statut })}
   />

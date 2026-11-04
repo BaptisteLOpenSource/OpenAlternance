@@ -279,6 +279,9 @@ describe("base de test (TEST_DATABASE_URL)", () => {
     const state = (await res.json()) as { documents: { name: string; format: string }[]; pdfs: string[] };
     expect(state.documents).toContainEqual({ name: "docpdftest.pdf", format: "pdf" });
     expect(state.pdfs).not.toContain("docpdftest.pdf");
+    expect(state.pdfs).not.toContain("doc-docpdftest.pdf");
+    expect(await repo.hasFichier("docpdftest.pdf")).toBe(false);
+    expect(await repo.hasFichier("doc-docpdftest.pdf")).toBe(true);
     const served = await auth("/api/fichiers/docpdftest.pdf");
     expect(served.headers.get("content-type")).toBe("application/pdf");
     expect(Buffer.from(await served.arrayBuffer()).toString("latin1")).toBe("%PDF-1.4\n%test\n");
@@ -304,6 +307,7 @@ describe("base de test (TEST_DATABASE_URL)", () => {
   test("document PDF: supprimer le document supprime le fichier", async () => {
     await auth("/api/document-supprimer", { method: "POST", body: JSON.stringify({ name: "docpdftest.pdf" }) });
     expect((await auth("/api/fichiers/docpdftest.pdf")).status).toBe(404);
+    expect(await repo.hasFichier("doc-docpdftest.pdf")).toBe(false);
   });
 
   test("CV: non PDF -> 400, rien écrit", async () => {

@@ -134,7 +134,7 @@ const ACTIONS: Record<string, (required: Field, optional: (name: string) => stri
   "document-pdf": async (required) => repo.addPdfDocument(documentFile(required("titre"), "pdf"), pdfBytes(required("data"))),
   "document-texte": async (required) => {
     const name = required("name");
-    const data = SAFE_FICHIER.test(name) ? await repo.readFichier(name) : null;
+    const data = SAFE_FICHIER.test(name) ? await repo.readPdf(name) : null;
     if (!data) throw new Error(`PDF introuvable: ${name}`);
     await repo.addDocument(`${name.slice(0, -".pdf".length)}.html`, "html", await pdfToHtml(data));
   },
@@ -194,8 +194,8 @@ async function logout(req: Request): Promise<Response> {
 // Opened directly, an SVG runs its scripts on this origin: deny everything but inline style.
 const SVG_HEADERS = { "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'" };
 
-async function file(name: string, type: string, headers: Record<string, string> = {}): Promise<Response> {
-  const data = await repo.readFichier(name);
+async function file(name: string, type: string, headers: Record<string, string> = {}, read = repo.readFichier): Promise<Response> {
+  const data = await read(name);
   return data ? new Response(new Uint8Array(data), { headers: { "content-type": type, ...headers } }) : notFound();
 }
 
@@ -215,7 +215,7 @@ async function handleGet(path: string): Promise<Response> {
   if (path.startsWith("/api/fichiers/")) {
     const name = decodeURIComponent(path.slice("/api/fichiers/".length));
     if (!SAFE_FICHIER.test(name)) return notFound();
-    return file(name, "application/pdf");
+    return file(name, "application/pdf", {}, repo.readPdf);
   }
   if (path.startsWith("/api/documents/")) {
     const doc = await repo.readDocument(decodeURIComponent(path.slice("/api/documents/".length)));

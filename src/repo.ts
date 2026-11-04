@@ -396,7 +396,7 @@ export async function setProfil(fields: Profil): Promise<void> {
 
 export async function listPdfs(): Promise<string[]> {
   const rows = await sql<{ name: string }[]>`SELECT name FROM fichiers
-    WHERE name LIKE '%.pdf' AND name <> 'cv.pdf' AND name NOT IN (SELECT name FROM documents)
+    WHERE name LIKE '%.pdf' AND name <> 'cv.pdf' AND name NOT LIKE 'doc-%' AND name NOT IN (SELECT name FROM documents)
     ORDER BY name`;
   return rows.map((row) => row.name);
 }
@@ -437,13 +437,20 @@ export async function addDocument(name: string, format: DocFormat, content: stri
   }
 }
 
-// Document PDF: its bytes live in fichiers under the same name, both rows or none.
+// Bytes sit under doc-<name> so a document can never overwrite or delete cv.pdf or a lettre PDF.
+const docFichier = (name: string) => `doc-${name}`;
+
+export async function readPdf(name: string): Promise<Uint8Array | null> {
+  return (await readFichier(docFichier(name))) ?? (await readFichier(name));
+}
+
 export async function addPdfDocument(name: string, data: Uint8Array): Promise<void> {
   if (!SAFE_DOCUMENT.test(name)) throw new Error(`nom de document invalide: ${name}`);
   try {
     await sql.begin(async (tx) => {
+      if ((await tx`SELECT 1 FROM fichiers WHERE name = ${name}`).length > 0) throw new Error(`Document déjà existant: ${name}`);
       await tx`INSERT INTO documents (name, format, content) VALUES (${name}, 'pdf', '')`;
-      await tx`INSERT INTO fichiers (name, data) VALUES (${name}, ${data})`;
+      await tx`INSERT INTO fichiers (name, data) VALUES (${docFichier(name)}, ${data})`;
     });
   } catch (error) {
     if (isUniqueViolation(error)) throw new Error(`Document déjà existant: ${name}`);
@@ -460,6 +467,6 @@ export async function deleteDocument(name: string): Promise<void> {
   await sql.begin(async (tx) => {
     const [deleted] = await tx<DocumentRow[]>`DELETE FROM documents WHERE name = ${name} RETURNING name, format`;
     if (!deleted) throw new Error(`Document introuvable: ${name}`);
-    if (deleted.format === "pdf") await tx`DELETE FROM fichiers WHERE name = ${name}`;
+    if (deleted.format === "pdf") await tx`DELETE FROM fichiers WHERE name = ${docFichier(name)}`;
   });
 }

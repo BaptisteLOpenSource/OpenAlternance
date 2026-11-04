@@ -91,9 +91,9 @@ export const COMMANDS: Command[] = [
   {
     id: "lettre-supprimer",
     label: "Supprimer la lettre",
-    scope: ["company"],
-    run: ({ send, company, lettre }) =>
-      company && lettre && confirm(`Supprimer la lettre de ${company.nom} ?`) && send("lettre-supprimer", { entreprise: company.nom }),
+    scope: ["company", "lettres"],
+    run: ({ send, lettre }) =>
+      lettre && confirm(`Supprimer la lettre de ${lettre.entreprise || lettre.file} ?`) && send("lettre-supprimer", { file: lettre.file }),
   },
   {
     id: "site-web",

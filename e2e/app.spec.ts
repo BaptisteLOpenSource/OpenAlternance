@@ -111,6 +111,16 @@ test("document PDF: visionneuse et téléchargement", async ({ page }) => {
   await expect(page.getByRole("link", { name: "Télécharger" })).toHaveAttribute("download", "cv-2026.pdf");
 });
 
+test("clic droit sur une lettre: Supprimer la lettre", async ({ page }) => {
+  const mock: Mock = { loggedIn: true, calls: [] };
+  await mockApi(page, mock);
+  await page.goto("/#/lettres");
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.locator('[data-lettre="mgdis.md"]').click({ button: "right" });
+  await page.getByText("Supprimer la lettre", { exact: true }).click();
+  await expect.poll(() => mock.calls.find((c) => c.path === "/api/lettre-supprimer")?.body).toEqual({ file: "mgdis.md" });
+});
+
 test("XSS: les notes d'entreprise sont affichées en texte, aucun script exécuté", async ({ page }) => {
   const mock: Mock = { loggedIn: true, calls: [] };
   await mockApi(page, mock);

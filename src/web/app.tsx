@@ -409,7 +409,7 @@ function App() {
   const [companiesFilter, setCompaniesFilter] = useState<Statut | "">("");
   const [dialog, setDialog] = useState<DialogState>(null);
   const [palette, setPalette] = useState(false);
-  const [menu, setMenu] = useState<{ x: number; y: number; companyId: number | null } | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number; companyId: number | null; lettre?: string } | null>(null);
   const [hidden, setHidden] = useState(readHidden);
   const [base, sub] = route.split("/");
   const page = PAGES.find((p) => p.path === base) ?? PAGES[0];
@@ -441,7 +441,13 @@ function App() {
     setHidden(next);
   };
   const runner = (run: (c: Ctx) => unknown) => () => ctx && run(ctx);
-  const menuCtx = ctx && menu?.companyId != null ? { ...ctx, company: ctx.state.companies.find((c) => c.id === menu.companyId) ?? null } : ctx;
+  const menuCtx = ctx && menu
+    ? {
+        ...ctx,
+        company: menu.companyId != null ? (ctx.state.companies.find((c) => c.id === menu.companyId) ?? null) : ctx.company,
+        lettre: menu.lettre != null ? (ctx.state.lettres.find((l) => l.file === menu.lettre) ?? null) : ctx.lettre,
+      }
+    : ctx;
   const menuRunner = (run: (c: Ctx) => unknown) => () => menuCtx && run(menuCtx);
   const menuItems = forScope(scope)
     .filter((c) => c.pinned || !hidden.includes(c.id))
@@ -457,7 +463,8 @@ function App() {
     if (!ctx || (e.target as Element).closest("input, textarea, select, [contenteditable]")) return;
     e.preventDefault();
     const row = (e.target as Element).closest("[data-company]");
-    setMenu({ x: e.clientX, y: e.clientY, companyId: row ? Number(row.getAttribute("data-company")) : null });
+    const lettreRow = (e.target as Element).closest("[data-lettre]");
+    setMenu({ x: e.clientX, y: e.clientY, companyId: row ? Number(row.getAttribute("data-company")) : null, lettre: lettreRow?.getAttribute("data-lettre") ?? undefined });
   };
 
   useEffect(() => {

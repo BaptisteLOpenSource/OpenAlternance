@@ -332,6 +332,20 @@ describe("base de test (TEST_DATABASE_URL)", () => {
     expect(lettre.status).toBe(200);
   });
 
+  test("lettre orpheline (entreprise supprimée): supprimée par son fichier", async () => {
+    await auth("/api/entreprise", { method: "POST", body: JSON.stringify({ nom: "TEST-orph-suppr" }) });
+    await auth("/api/lettre", { method: "POST", body: JSON.stringify({ entreprise: "TEST-orph-suppr", content: "lettre" }) });
+    await auth("/api/entreprise-supprimer", { method: "POST", body: JSON.stringify({ entreprise: "TEST-orph-suppr" }) });
+    const res = await auth("/api/lettre-supprimer", { method: "POST", body: JSON.stringify({ file: "test-orph-suppr.md" }) });
+    expect(res.status).toBe(200);
+    expect((await auth("/api/lettres/test-orph-suppr.md")).status).toBe(404);
+  });
+
+  test("template de lettre: suppression refusée", async () => {
+    const res = await auth("/api/lettre-supprimer", { method: "POST", body: JSON.stringify({ file: "_template.md" }) });
+    expect(res.status).toBe(400);
+  });
+
   test("document-texte: PDF absent -> 400", async () => {
     const res = await auth("/api/document-texte", { method: "POST", body: JSON.stringify({ name: "absent.pdf" }) });
     expect(res.status).toBe(400);

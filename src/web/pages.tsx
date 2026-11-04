@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Download } from "lucide-preact";
+import { ChevronLeft, ChevronRight, Download, Trash2 } from "lucide-preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { CLOSING_STATUTS, LETTRE_STATUTS, type Profil, MOIS_MIN, escapeHtml, fileName, toIso } from "../logic";
 import type { Lettre } from "../repo";
@@ -205,6 +205,9 @@ function LettreView({ lettre, send, onTemplate, profil, onDirty }: { lettre: Let
     [data],
   );
   const title = fileName(profil.nom_fichier, { username: profil.username, entreprise: lettre.entreprise || lettre.file });
+  const remove = async () => {
+    if (confirm(`Supprimer la lettre de ${lettre.entreprise || lettre.file} ?`) && (await send("lettre-supprimer", { file: lettre.file }))) location.hash = "#/lettres";
+  };
   return (
     <Card>
       <CardHeader>
@@ -229,6 +232,11 @@ function LettreView({ lettre, send, onTemplate, profil, onDirty }: { lettre: Let
           {view !== "pdf" && !isTemplate && (
             <Button variant="outline" size="sm" onClick={onTemplate}>
               Template
+            </Button>
+          )}
+          {lettre.type === "lettre" && editable && (
+            <Button variant="ghost" size="icon-sm" aria-label="Supprimer la lettre" onClick={remove}>
+              <Trash2 />
             </Button>
           )}
           <Button size="sm" disabled={!data} onClick={() => (view === "pdf" ? frame.current?.contentWindow?.postMessage("print", "*") : setView("pdf"))}>
@@ -346,7 +354,7 @@ export function LettresPage({ state, send, initial }: { state: AppState; send: S
             </TableHeader>
             <TableBody>
               {letters.map((l) => (
-                <TableRow key={l.file} class={cn("cursor-pointer", l.file === file && "bg-muted/50")} onClick={(e) => !(e.target as Element).closest("button, [popover]") && select(l.file)}>
+                <TableRow key={l.file} data-lettre={l.file} class={cn("cursor-pointer", l.file === file && "bg-muted/50")} onClick={(e) => !(e.target as Element).closest("button, [popover]") && select(l.file)}>
                   <TableCell>
                     <button
                       type="button"

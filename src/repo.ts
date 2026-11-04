@@ -343,10 +343,11 @@ async function logCandidature(companyNom: string, date: string): Promise<void> {
   if (!logged) await logInteraction(companyNom, "candidature", { date });
 }
 
-export async function deleteLettre(companyNom: string): Promise<void> {
-  const file = await lettreFile(companyNom);
+// Keyed by file: a letter outlives its company, so the name cannot find it.
+export async function deleteLettre(file: string): Promise<void> {
+  if (!SAFE_NAME.test(file) || file === TEMPLATE_FILE) throw new Error(`Lettre introuvable: ${file}`);
   const [deleted] = await sql<{ file: string }[]>`DELETE FROM lettres WHERE file = ${file} RETURNING file`;
-  if (!deleted) throw new Error(`Lettre introuvable: ${companyNom}`);
+  if (!deleted) throw new Error(`Lettre introuvable: ${file}`);
 }
 
 export async function getProfil(): Promise<Profil> {

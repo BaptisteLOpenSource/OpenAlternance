@@ -140,7 +140,7 @@ const ACTIONS: Record<string, (required: Field, optional: (name: string) => stri
   template: (_required, optional) => repo.writeTemplate(optional("content") ?? ""),
   "lettre-statut": (required, optional) =>
     repo.setLettreStatut(required("entreprise"), oneOf(required("statut"), LETTRE_STATUTS, "statut"), optional("date")),
-  "lettre-supprimer": (required) => repo.deleteLettre(required("entreprise")),
+  "lettre-supprimer": (required) => repo.deleteLettre(required("file")),
   statut: (required) => repo.setStatut(required("entreprise"), oneOf(required("statut"), STATUTS, "statut")),
   "sans-reponse": (required) => repo.closeRelance(required("entreprise")),
   "relance-date": (required) => repo.setRelance(required("entreprise"), required("date")),

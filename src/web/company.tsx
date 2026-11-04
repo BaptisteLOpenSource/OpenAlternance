@@ -99,7 +99,7 @@ function LettreEditor({ company, lettre, send }: { company: CompanyRow; lettre: 
           <Button size="sm" disabled={!dirty} onClick={save}>
             Enregistrer
           </Button>
-          <Button variant="ghost" size="icon-sm" aria-label="Supprimer la lettre" onClick={() => confirm(`Supprimer la lettre de ${company.nom} ?`) && send("lettre-supprimer", { entreprise: company.nom })}>
+          <Button variant="ghost" size="icon-sm" aria-label="Supprimer la lettre" onClick={() => confirm(`Supprimer la lettre de ${company.nom} ?`) && send("lettre-supprimer", { file })}>
             <Trash2 />
           </Button>
         </CardAction>

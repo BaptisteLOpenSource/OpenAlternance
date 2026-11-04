@@ -1,5 +1,7 @@
 import { chmodSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import template from "../lettres/_template.md" with { type: "text" };
+import { CLOSING_STATUTS, type Row, type Statut, replayTracks, today } from "./logic";
 
 export type Dialect = "postgres" | "sqlite";
 
@@ -38,9 +40,16 @@ if (dialect === "sqlite") {
 
 // Bun.SQL reports SQLite unique/primary-key hits with their own codes, not 23505.
 export function isUniqueViolation(error: unknown): boolean {
-  const code = (error as { code?: string }).code ?? "";
-  return /^(23505|SQLITE_CONSTRAINT_(UNIQUE|PRIMARYKEY))$/.test(code);
+  const { code, errno } = error as { code?: string; errno?: string };
+  return errno === "23505" || /^(23505|SQLITE_CONSTRAINT_(UNIQUE|PRIMARYKEY))$/.test(code ?? "");
 }
+
+const INTERACTION_COLUMNS = [
+  "poste_id INTEGER REFERENCES postes(id) ON DELETE SET NULL",
+  "statut TEXT",
+  "prochaine TEXT",
+  "auto TEXT",
+];
 
 export function schema(d: Dialect): string[] {
   const pg = d === "postgres";
@@ -89,13 +98,32 @@ export function schema(d: Dialect): string[] {
     telephone TEXT,
     linkedin TEXT
   )`,
+    `CREATE TABLE IF NOT EXISTS agences (
+    id ${ID},
+    company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+    ville TEXT NOT NULL,
+    adresse TEXT,
+    code_postal TEXT
+  )`,
+    `CREATE TABLE IF NOT EXISTS postes (
+    id ${ID},
+    company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+    intitule TEXT NOT NULL,
+    contrat TEXT NOT NULL DEFAULT 'alternance',
+    annonce TEXT,
+    publication TEXT,
+    candidatures TEXT,
+    reponses TEXT,
+    agence_id INTEGER REFERENCES agences(id) ON DELETE SET NULL
+  )`,
     `CREATE TABLE IF NOT EXISTS interactions (
     id ${ID},
     company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
     type TEXT NOT NULL,
     date TEXT NOT NULL,
     note TEXT,
-    delai INTEGER DEFAULT 7
+    delai INTEGER DEFAULT 7,
+    ${INTERACTION_COLUMNS.join(",\n    ")}
   )`,
     `CREATE TABLE IF NOT EXISTS lettres (
     file TEXT PRIMARY KEY,
@@ -130,6 +158,50 @@ export function schema(d: Dialect): string[] {
   ];
 }
 
+
+async function addColumn(table: string, column: string): Promise<void> {
+  if (dialect === "postgres") return void (await sql.unsafe(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${column}`));
+  try {
+    await sql.unsafe(`ALTER TABLE ${table} ADD COLUMN ${column}`);
+  } catch (error) {
+    if (!/duplicate column name/i.test((error as Error).message)) throw error;
+  }
+}
+
+async function historyOf(companyId: number) {
+  const postes = await sql<{ id: number }[]>`SELECT id FROM postes WHERE company_id = ${companyId}`;
+  const rows = await sql<Row[]>`SELECT type, date, delai, poste_id, statut, prochaine FROM interactions WHERE company_id = ${companyId} ORDER BY date, id`;
+  return { rows, ...replayTracks(rows, postes.map((poste) => poste.id)) };
+}
+
+// Cache set before events existed: recorded once, guard keeps it idempotent.
+async function reconcileHistory(): Promise<void> {
+  const companies = await sql<{ id: number; statut: Statut; prochaine_relance: string | null }[]>`
+    SELECT id, statut, prochaine_relance FROM companies
+    WHERE id NOT IN (SELECT company_id FROM interactions WHERE type IN ('statut', 'planif'))`;
+  for (const company of companies) {
+    let history = await historyOf(company.id);
+    const dated = history.rows.at(-1)?.date ?? today();
+    if (history.statut !== company.statut) {
+      await sql`INSERT INTO interactions (company_id, type, date, statut) VALUES (${company.id}, 'statut', ${dated}, ${company.statut})`;
+      history = await historyOf(company.id);
+    }
+    const wanted = CLOSING_STATUTS.has(company.statut) ? null : company.prochaine_relance;
+    // A relance the reporter moved to today is a carry, not a manual change.
+    const carried = history.prochaine !== null && wanted !== null && history.prochaine < wanted && wanted <= today();
+    if (history.prochaine !== wanted && !carried) {
+      await sql`INSERT INTO interactions (company_id, type, date, prochaine) VALUES (${company.id}, 'planif', ${dated}, ${wanted})`;
+    }
+  }
+}
+
 export async function migrate(): Promise<void> {
   for (const statement of schema(dialect)) await sql.unsafe(statement);
+  // Desktop never runs setup(): the letter template must ship with the schema.
+  await sql`INSERT INTO lettres (file, content) VALUES ('_template.md', ${template}) ON CONFLICT (file) DO NOTHING`;
+  for (const column of INTERACTION_COLUMNS) await addColumn("interactions", column);
+  await sql`INSERT INTO postes (company_id, intitule, annonce, publication, candidatures, reponses)
+    SELECT id, poste, annonce, publication, candidatures, reponses FROM companies
+    WHERE poste IS NOT NULL AND poste <> '' AND id NOT IN (SELECT company_id FROM postes)`;
+  await reconcileHistory();
 }

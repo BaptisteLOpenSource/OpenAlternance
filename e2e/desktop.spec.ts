@@ -9,6 +9,8 @@ const state = {
   today: "2026-10-13",
   companies: [],
   contacts: [],
+  postes: [],
+  agences: [],
   interactions: [],
   lettres: [],
   pdfs: [],

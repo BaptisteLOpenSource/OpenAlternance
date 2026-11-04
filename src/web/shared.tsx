@@ -1,8 +1,8 @@
 import { Ban, Check, CircleCheck, CircleDashed, CircleX, Copy, FileUp, Handshake, Hourglass, Mail, MessageSquare, Phone, Redo2, Send, Trash2, Trophy, UserX, X } from "lucide-preact";
 import { useState } from "preact/hooks";
-import { CLOSING_STATUTS, FICHE_EXTRA, type FicheExtra, LETTRE_STATUTS, type InteractionType, type LettreStatut, STATUTS, type Statut, today } from "../logic";
-import type { CompanyRow, Lettre } from "../repo";
-import type { Action } from "./store";
+import { CLOSING_STATUTS, CONTRATS, type Contrat, FICHE_EXTRA, type FicheExtra, LETTRE_STATUTS, type InteractionType, type LettreStatut, STATUTS, type Statut, TYPES, today } from "../logic";
+import type { Company, CompanyRow, Lettre } from "../repo";
+import type { Action, AppState, CompanyEtat, PosteEtat } from "./store";
 import { Select } from "./menus";
 import { ToggleGroup, useToast } from "./fx";
 import { Badge, type BadgeVariant, Button, Dialog, Input } from "./ui";
@@ -61,7 +61,7 @@ export const STATUT: Record<Statut, Tag> = {
   indisponible: { label: "Pas d'alternant", variant: "outline", icon: UserX },
 };
 
-export const ECHANGE: Record<InteractionType, Tag> = {
+export const ECHANGE: Record<(typeof TYPES)[number], Tag> = {
   mail: { label: "Email", variant: "info", icon: Mail },
   appel: { label: "Appel", variant: "info", icon: Phone },
   candidature: { label: "Candidature", variant: "info", icon: Send },
@@ -72,7 +72,9 @@ export const ECHANGE: Record<InteractionType, Tag> = {
   reponse_defavorable: { label: "Réponse défavorable", variant: "destructive", icon: CircleX },
   depot: { label: "CV déposé", variant: "info", icon: FileUp },
 };
-export const echangeLabel = (type: string) => ECHANGE[type as InteractionType]?.label ?? type;
+export const CONTRAT_LABEL: Record<Contrat, string> = { alternance: "Alternance", stage: "Stage", cdd: "CDD", cdi: "CDI", interim: "Intérim" };
+export const CONTRAT_OPTIONS = CONTRATS.map((c) => ({ value: c, label: CONTRAT_LABEL[c] }));
+export const echangeLabel = (type: string) => ECHANGE[type as (typeof TYPES)[number]]?.label ?? type;
 
 export const TagBadge = ({ tag, class: className }: { tag: Tag; class?: string }) => (
   <Badge variant={tag.variant} class={className}>
@@ -81,14 +83,15 @@ export const TagBadge = ({ tag, class: className }: { tag: Tag; class?: string }
   </Badge>
 );
 export const EchangeBadge = ({ type }: { type: string }) =>
-  type in ECHANGE ? <TagBadge tag={ECHANGE[type as InteractionType]} /> : <Badge variant="outline">{type}</Badge>;
+  type in ECHANGE ? <TagBadge tag={ECHANGE[type as (typeof TYPES)[number]]} /> : <Badge variant="outline">{type}</Badge>;
 
 export const formFields = (form: HTMLFormElement) =>
   Object.fromEntries([...new FormData(form)].map(([k, v]) => [k, typeof v === "string" ? v : v.name]));
 
-export type Send = (action: Action, fields: Record<string, string>) => Promise<boolean>;
+// Resolves false on failure, true on success, or the created letter's file name.
+export type Send = (action: Action, fields: Record<string, string>) => Promise<boolean | string>;
 export type DialogState = {
-  kind: "entreprise" | "personne" | "echange" | "modifier-personne" | "modifier-echange" | "lettre" | "document" | "profil";
+  kind: "entreprise" | "personne" | "echange" | "modifier-personne" | "modifier-echange" | "lettre" | "document" | "profil" | "poste" | "modifier-poste" | "agence" | "fusion";
   company?: string;
   id?: number;
   type?: InteractionType;
@@ -101,7 +104,7 @@ export const isTodo = (c: CompanyRow, today: string) => isOpen(c) && c.prochaine
 export const shortDate = (iso: string | null | undefined) =>
   iso ? new Date(`${iso}T00:00`).toLocaleDateString("fr-FR", { day: "numeric", month: "short" }) : "-";
 
-export const ficheOf = (company: CompanyRow) => ({
+export const ficheOf = (company: Company) => ({
   ville: company.ville ?? "",
   site: company.site ?? "",
   notes: company.notes ?? "",
@@ -119,15 +122,26 @@ export const ficheOf = (company: CompanyRow) => ({
 // fiche is a full replace. Stale render snapshot must not drop
 // a field still in flight from the previous save.
 const inFlight = new Map<string, Record<string, string>>();
-export async function sendFiche(send: Send, company: CompanyRow, changes: Record<string, string>): Promise<boolean> {
+export async function sendFiche(send: Send, company: Company, changes: Record<string, string>): Promise<boolean> {
   const payload = { entreprise: company.nom, ...ficheOf(company), ...inFlight.get(company.nom), ...changes };
   inFlight.set(company.nom, payload);
-  const ok = await send("fiche", payload);
+  const ok = (await send("fiche", payload)) !== false;
   if (inFlight.get(company.nom) === payload) inFlight.delete(company.nom);
   return ok;
 }
 
-export const relanceEnvoyee = (send: Send, nom: string) => send("echange", { entreprise: nom, type: "relance" });
+export const posteParam = (poste?: { id: number }): Record<string, string> => (poste ? { poste: String(poste.id) } : {});
+
+// Company-level actions hit the track holding company.prochaine_relance (undefined = spontanée).
+export function dueTrack(state: AppState, company: CompanyEtat): PosteEtat | undefined {
+  let due: PosteEtat | undefined;
+  for (const p of state.postes)
+    if (p.company_id === company.id && p.etat.prochaine !== null && (!due || p.etat.prochaine < due.etat.prochaine!)) due = p;
+  const spontanee = company.spontanee.prochaine;
+  return due && (spontanee === null || due.etat.prochaine! < spontanee) ? due : undefined;
+}
+
+export const relanceEnvoyee = (send: Send, nom: string, poste?: PosteEtat) => send("echange", { entreprise: nom, type: "relance", ...posteParam(poste) });
 
 export function StatutFilter({
   companies,
@@ -168,20 +182,22 @@ export function RelanceBadge({ company, today }: { company: CompanyRow; today: s
 }
 
 // Relance prévue: décaler (date) ou annuler. Même contrôle sur fiche entreprise, historique et todo.
-export function RelanceControls({ company, send }: { company: CompanyRow; send: Send }) {
+export function RelanceControls({ company, send, poste }: { company: CompanyRow; send: Send; poste?: PosteEtat }) {
+  const target = { entreprise: company.nom, ...posteParam(poste) };
+  const label = poste ? `${company.nom} · ${poste.intitule}` : company.nom;
   return (
     <span class="inline-flex flex-wrap items-center gap-2">
       <Input
         type="date"
         class="w-auto text-sm sm:h-8"
-        aria-label={`Décaler la relance de ${company.nom}`}
-        value={company.prochaine_relance ?? ""}
-        onChange={(e) => e.currentTarget.value && send("relance-date", { entreprise: company.nom, date: e.currentTarget.value })}
+        aria-label={`Décaler la relance de ${label}`}
+        value={(poste ? poste.etat.prochaine : company.prochaine_relance) ?? ""}
+        onChange={(e) => e.currentTarget.value && send("relance-date", { ...target, date: e.currentTarget.value })}
       />
       <Button
         variant="ghost"
         size="sm"
-        onClick={() => confirm(`Annuler la relance de ${company.nom} ? Le statut est conservé.`) && send("sans-reponse", { entreprise: company.nom })}
+        onClick={() => confirm(`Annuler la relance de ${label} ? Le statut est conservé.`) && send("sans-reponse", target)}
       >
         <Ban />
         Annuler la relance
@@ -248,14 +264,15 @@ export function CopyButton({ value }: { value: string }) {
   );
 }
 
-export const StatutSelect = ({ company, send }: { company: CompanyRow; send: Send }) => (
+// Writes the poste's track, or the spontanée track without poste; statut = what that track shows.
+export const StatutSelect = ({ company, statut, poste, send }: { company: Pick<CompanyRow, "nom">; statut: Statut; poste?: PosteEtat; send: Send }) => (
   <Select
-    value={company.statut}
-    aria-label={`Statut de ${company.nom}`}
+    value={statut}
+    aria-label={poste ? `Statut du poste ${poste.intitule}` : `Statut de ${company.nom}`}
     options={STATUTS.map((s) => ({ value: s, label: STATUT[s].label }))}
     renderOption={(s) => <StatutBadge statut={s as Statut} />}
     renderValue={(s) => <StatutBadge statut={s as Statut} class="pr-1.5" />}
-    onChange={(statut) => send("statut", { entreprise: company.nom, statut })}
+    onChange={(statut) => send("statut", { entreprise: company.nom, statut, ...posteParam(poste) })}
   />
 );
 

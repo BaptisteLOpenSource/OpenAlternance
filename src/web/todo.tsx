@@ -1,6 +1,7 @@
 import { Check, X } from "lucide-preact";
 import { useState } from "preact/hooks";
-import { type Send, StatutBadge, RelanceBadge, RelanceControls, isTodo, relanceEnvoyee } from "./shared";
+import { type Send, StatutBadge, RelanceBadge, RelanceControls, dueTrack, isTodo, posteParam, relanceEnvoyee } from "./shared";
+import type { PosteEtat } from "./store";
 import type { AppState } from "./store";
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui";
 
@@ -9,11 +10,11 @@ export function TodoPage({ state, send }: { state: AppState; send: Send }) {
   const [status, setStatus] = useState("");
   const todo = state.companies.filter((c) => isTodo(c, today)).sort((a, b) => a.prochaine_relance!.localeCompare(b.prochaine_relance!));
 
-  const relancer = async (nom: string) => {
-    if (await relanceEnvoyee(send, nom)) setStatus(`Relance enregistrée : ${nom}`);
+  const relancer = async (nom: string, poste?: PosteEtat) => {
+    if (await relanceEnvoyee(send, nom, poste)) setStatus(`Relance enregistrée : ${nom}`);
   };
-  const refuser = async (nom: string) => {
-    if (confirm(`Passer ${nom} en refusé ?`) && (await send("statut", { entreprise: nom, statut: "refuse" }))) setStatus(`Refusé : ${nom}`);
+  const refuser = async (nom: string, poste?: PosteEtat) => {
+    if (confirm(`Passer ${nom} en refusé ?`) && (await send("statut", { entreprise: nom, statut: "refuse", ...posteParam(poste) }))) setStatus(`Refusé : ${nom}`);
   };
 
   return (
@@ -30,32 +31,36 @@ export function TodoPage({ state, send }: { state: AppState; send: Send }) {
           <p class="text-sm text-muted-foreground">Rien à traiter.</p>
         ) : (
           <ul class="grid gap-2">
-            {todo.map((c) => (
+            {todo.map((c) => {
+              const poste = dueTrack(state, c);
+              return (
               <li key={c.id} class="grid gap-3 rounded-lg border border-border/20 bg-background/40 p-3">
                 <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
                   <div class="min-w-0 flex-1">
                     <a href={`#/entreprises/${c.id}`} class="block truncate font-medium underline-offset-2 hover:underline">
                       {c.nom}
                     </a>
-                    <StatutBadge statut={c.statut} class="mt-1" />
+                    {poste && <p class="truncate text-xs text-muted-foreground">{poste.intitule}</p>}
+                    <StatutBadge statut={poste ? poste.etat.statut : c.spontanee.statut} class="mt-1" />
                   </div>
                   <RelanceBadge company={c} today={today} />
                   <div class="flex gap-2">
-                    <Button size="sm" onClick={() => relancer(c.nom)}>
+                    <Button size="sm" onClick={() => relancer(c.nom, poste)}>
                       <Check />
                       Relancé
                     </Button>
-                    <Button variant="outline" size="sm" onClick={() => refuser(c.nom)}>
+                    <Button variant="outline" size="sm" onClick={() => refuser(c.nom, poste)}>
                       <X />
                       Refusé
                     </Button>
                   </div>
                 </div>
                 <div class="flex flex-wrap gap-2 border-t pt-2">
-                  <RelanceControls company={c} send={send} />
+                  <RelanceControls company={c} poste={poste} send={send} />
                 </div>
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </CardContent>

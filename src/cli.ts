@@ -4,7 +4,7 @@ import { parseArgs } from "node:util";
 import { migrate, sql } from "./db";
 import { STATUTS, TYPES, oneOf, type InteractionType, type Statut } from "./logic";
 import { setup } from "./setup";
-import { addCompany, addContact, listCompanies, logInteraction, setStatut, writeFichier } from "./repo";
+import { addCompany, addContact, listCompanies, logInteraction, mergeCompanies, setStatut, writeFichier } from "./repo";
 
 const { values, positionals } = parseArgs({
   args: process.argv.slice(2),
@@ -30,6 +30,7 @@ const USAGE = `usage:
   personne <entreprise> --nom <nom> [--role --email --tel]
   contact <entreprise> <${TYPES.join("|")}> [--date YYYY-MM-DD] [--delai 7] [--note]
   statut <entreprise> <${STATUTS.join("|")}>
+  fusionner <source> <cible>   (source -> cible, source supprimée)
   liste
   sync-files   (lettres/*.md -> table lettres, data/cv.pdf + logo.png -> table fichiers)
   serve   (dashboard + formulaires sur http://127.0.0.1:3000)`;
@@ -82,6 +83,13 @@ try {
       const statut: Statut = oneOf(requireArg(args[1], "statut"), STATUTS, "statut");
       await setStatut(entreprise, statut);
       console.log(`${entreprise} -> ${statut}`);
+      break;
+    }
+    case "fusionner": {
+      const source = requireArg(args[0], "source");
+      const cible = requireArg(args[1], "cible");
+      await mergeCompanies(source, cible);
+      console.log(`${source} fusionnée dans ${cible}`);
       break;
     }
     case "sync-files": {

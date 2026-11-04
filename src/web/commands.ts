@@ -1,14 +1,14 @@
 import { fillProfil } from "../logic";
 import type { CompanyRow, Lettre, Poste } from "../repo";
-import { type Open, type Send, relanceEnvoyee } from "./shared";
-import { type AppState, fetchLettre } from "./store";
+import { type Open, type Send, dueTrack, posteParam, relanceEnvoyee } from "./shared";
+import { type AppState, type CompanyEtat, fetchLettre } from "./store";
 
 export type Ctx = {
   state: AppState;
   send: Send;
   open: Open;
   reload: () => void;
-  company: CompanyRow | null;
+  company: CompanyEtat | null;
   lettre: Lettre | null;
 };
 
@@ -52,13 +52,14 @@ ${poste ? `poste: ${poste.id}\n` : ""}statut: brouillon`)
       .replaceAll("{{date}}", new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })),
     state.profil,
   );
-  const file = await send("lettre", { entreprise: company.nom, content: draft.trimEnd(), ...(poste ? { poste: String(poste.id) } : {}) });
+  const file = await send("lettre", { entreprise: company.nom, content: draft.trimEnd(), ...posteParam(poste) });
   if (typeof file !== "string") return null;
   location.hash = `#/lettres/${encodeURIComponent(file)}`;
   return file;
 }
 
-const relance = ({ send, company }: Ctx) => company && relanceEnvoyee(send, company.nom);
+const relance = ({ send, company, state }: Ctx) => company && relanceEnvoyee(send, company.nom, dueTrack(state, company));
+const target = (state: AppState, company: CompanyEtat) => ({ entreprise: company.nom, ...posteParam(dueTrack(state, company)) });
 
 export const COMMANDS: Command[] = [
   { id: "reload", label: "Actualiser", scope: "all", pinned: true, run: ({ reload }) => reload() },
@@ -70,20 +71,20 @@ export const COMMANDS: Command[] = [
     id: "entretien",
     label: "Passer en entretien",
     scope: ["company"],
-    run: ({ send, company }) => company && send("statut", { entreprise: company.nom, statut: "entretien" }),
+    run: ({ send, company, state }) => company && send("statut", { ...target(state, company), statut: "entretien" }),
   },
   {
     id: "refus",
     label: "Passer en refusé",
     scope: ["company"],
-    run: ({ send, company }) => company && confirm(`Passer ${company.nom} en refusé ?`) && send("statut", { entreprise: company.nom, statut: "refuse" }),
+    run: ({ send, company, state }) => company && confirm(`Passer ${company.nom} en refusé ?`) && send("statut", { ...target(state, company), statut: "refuse" }),
   },
   {
     id: "sans-reponse",
     label: "Arrêter les relances",
     scope: ["company"],
-    run: ({ send, company }) =>
-      company && confirm(`Arrêter les relances de ${company.nom} (sans réponse) ?`) && send("sans-reponse", { entreprise: company.nom }),
+    run: ({ send, company, state }) =>
+      company && confirm(`Arrêter les relances de ${company.nom} (sans réponse) ?`) && send("sans-reponse", target(state, company)),
   },
   {
     id: "lettre",

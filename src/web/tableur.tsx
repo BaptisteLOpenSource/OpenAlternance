@@ -2,7 +2,7 @@ import { CircleCheck, ExternalLink } from "lucide-preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { type ContactField, type Statut, TABLEUR_COLUMNS, contactWrite, isRh, isWebUrl, missingFields, tableurRow, toTsv } from "../logic";
 import type { Company, Contact } from "../repo";
-import { CopyButton, type Send, StatutFilter, StatutSelect, sendFiche } from "./shared";
+import { CopyButton, type Send, StatutBadge, StatutFilter, StatutSelect, sendFiche } from "./shared";
 import type { AppState, Fiches } from "./store";
 import {
   Badge,
@@ -304,7 +304,11 @@ export function TableurPage({
                     <CopyButton value={toTsv([r.cells])} />
                   </TableCell>
                   <TableCell>
-                    <StatutSelect company={r.company} statut={r.company.statut} send={send} />
+                    {state.postes.some((p) => p.company_id === r.company.id) ? (
+                      <StatutBadge statut={r.company.statut} />
+                    ) : (
+                      <StatutSelect company={r.company} statut={r.company.statut} send={send} />
+                    )}
                   </TableCell>
                   <TableCell>
                     {r.missing.length > 0 ? (

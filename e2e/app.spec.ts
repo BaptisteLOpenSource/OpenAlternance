@@ -10,10 +10,10 @@ const company = {
   ville: "Rennes",
   site: "https://mgdis.example",
   statut: "a_contacter",
-  prochaine_relance: null,
+  prochaine_relance: null as string | null,
   notes: "<img src=x onerror=\"window.__xss=1\">",
   note_google: "4,5",
-  logo: null,
+  logo: null as string | null,
   poste: "Dev",
   publication: null,
   candidatures: null,
@@ -176,7 +176,7 @@ test("impression de la lettre: nom du PDF = nom de fichier du profil", async ({ 
 });
 
 test("entreprise: dégradé pris dans les couleurs du logo, logo jamais en fond", async ({ page }) => {
-  const mock: Mock = { loggedIn: true, calls: [], extra: { companies: [{ ...company, logo: "https://mgdis.example/logo.svg" }] } };
+  const mock: Mock = { loggedIn: true, calls: [], extra: { companies: [listRow({ ...company, logo: "https://mgdis.example/logo.svg" })] } };
   await mockApi(page, mock);
   await page.goto("/#/entreprises/1");
   const colorOf = () => page.evaluate(() => [...document.querySelectorAll<HTMLElement>("*")].some((el) => getComputedStyle(el).backgroundColor === "rgb(255, 0, 0)"));
@@ -306,6 +306,17 @@ test("poste: StatutSelect envoie le poste", async ({ page }) => {
   await page.getByRole("button", { name: "Statut du poste Data" }).click();
   await page.getByRole("option", { name: "Refusé" }).click();
   await expect.poll(() => mock.calls.find((c) => c.path === "/api/statut")?.body).toEqual({ entreprise: "MGDIS", poste: "2", statut: "refuse" });
+});
+
+test("todo: relance due sur un poste -> Relancé envoie ce poste", async ({ page }) => {
+  const due = { ...listRow(company), statut: "contacte", prochaine_relance: "2026-10-08" };
+  const dues = [{ ...postes[0], etat: { statut: "contacte", prochaine: "2026-10-08" } }, postes[1]];
+  const mock: Mock = { loggedIn: true, calls: [], extra: { companies: [due], postes: dues } };
+  await mockApi(page, mock);
+  await page.goto("/#/todo");
+  await expect(page.getByText("Dev web")).toBeVisible();
+  await page.getByRole("button", { name: "Relancé" }).click();
+  await expect.poll(() => mock.calls.find((c) => c.path === "/api/echange")?.body).toEqual({ entreprise: "MGDIS", type: "relance", poste: "1" });
 });
 
 test("échange: type limité aux types d'échange (pas statut ni planif)", async ({ page }) => {

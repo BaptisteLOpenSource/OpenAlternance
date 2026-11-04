@@ -2,7 +2,7 @@ import { ArrowDown, ArrowUp, ChevronsUpDown, Plus, UserPlus } from "lucide-preac
 import { useState } from "preact/hooks";
 import { STATUTS, type Statut } from "../logic";
 import type { CompanyRow } from "../repo";
-import { type Open, RelanceBadge, type Send, StatutFilter, StatutSelect, shortDate } from "./shared";
+import { type Open, RelanceBadge, type Send, StatutBadge, StatutFilter, StatutSelect, shortDate } from "./shared";
 import type { AppState } from "./store";
 import {
   Badge,
@@ -135,7 +135,8 @@ export function CompaniesPage({
                     {(c.ville || villes.length > 0) && <p class="text-xs text-muted-foreground">{[c.ville, ...villes].filter(Boolean).join(" · ")}</p>}
                   </TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()}>
-                    <StatutSelect company={c} statut={c.statut} send={send} />
+                    {/* With postes, aggregate has no single track to write. */}
+                    {nbPostes > 0 ? <StatutBadge statut={c.statut} /> : <StatutSelect company={c} statut={c.statut} send={send} />}
                   </TableCell>
                   <TableCell class="hidden tabular-nums text-muted-foreground md:table-cell">{shortDate(c.derniere_interaction)}</TableCell>
                   <TableCell class="hidden md:table-cell">

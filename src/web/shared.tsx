@@ -2,7 +2,7 @@ import { Ban, Check, CircleCheck, CircleDashed, CircleX, Copy, FileUp, Handshake
 import { useState } from "preact/hooks";
 import { CLOSING_STATUTS, CONTRATS, type Contrat, FICHE_EXTRA, type FicheExtra, LETTRE_STATUTS, type InteractionType, type LettreStatut, STATUTS, type Statut, TYPES, today } from "../logic";
 import type { Company, CompanyRow, Lettre } from "../repo";
-import type { Action, PosteEtat } from "./store";
+import type { Action, AppState, CompanyEtat, PosteEtat } from "./store";
 import { Select } from "./menus";
 import { ToggleGroup, useToast } from "./fx";
 import { Badge, type BadgeVariant, Button, Dialog, Input } from "./ui";
@@ -130,7 +130,18 @@ export async function sendFiche(send: Send, company: Company, changes: Record<st
   return ok;
 }
 
-export const relanceEnvoyee = (send: Send, nom: string) => send("echange", { entreprise: nom, type: "relance" });
+export const posteParam = (poste?: { id: number }): Record<string, string> => (poste ? { poste: String(poste.id) } : {});
+
+// Company-level actions hit the track holding company.prochaine_relance (undefined = spontanée).
+export function dueTrack(state: AppState, company: CompanyEtat): PosteEtat | undefined {
+  let due: PosteEtat | undefined;
+  for (const p of state.postes)
+    if (p.company_id === company.id && p.etat.prochaine !== null && (!due || p.etat.prochaine < due.etat.prochaine!)) due = p;
+  const spontanee = company.spontanee.prochaine;
+  return due && (spontanee === null || due.etat.prochaine! < spontanee) ? due : undefined;
+}
+
+export const relanceEnvoyee = (send: Send, nom: string, poste?: PosteEtat) => send("echange", { entreprise: nom, type: "relance", ...posteParam(poste) });
 
 export function StatutFilter({
   companies,
@@ -172,7 +183,7 @@ export function RelanceBadge({ company, today }: { company: CompanyRow; today: s
 
 // Relance prévue: décaler (date) ou annuler. Même contrôle sur fiche entreprise, historique et todo.
 export function RelanceControls({ company, send, poste }: { company: CompanyRow; send: Send; poste?: PosteEtat }) {
-  const target: Record<string, string> = poste ? { entreprise: company.nom, poste: String(poste.id) } : { entreprise: company.nom };
+  const target = { entreprise: company.nom, ...posteParam(poste) };
   const label = poste ? `${company.nom} · ${poste.intitule}` : company.nom;
   return (
     <span class="inline-flex flex-wrap items-center gap-2">
@@ -261,7 +272,7 @@ export const StatutSelect = ({ company, statut, poste, send }: { company: Pick<C
     options={STATUTS.map((s) => ({ value: s, label: STATUT[s].label }))}
     renderOption={(s) => <StatutBadge statut={s as Statut} />}
     renderValue={(s) => <StatutBadge statut={s as Statut} class="pr-1.5" />}
-    onChange={(statut) => send("statut", { entreprise: company.nom, statut, ...(poste ? { poste: String(poste.id) } : {}) })}
+    onChange={(statut) => send("statut", { entreprise: company.nom, statut, ...posteParam(poste) })}
   />
 );
 

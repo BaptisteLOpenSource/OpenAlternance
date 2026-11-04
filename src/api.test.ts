@@ -377,7 +377,7 @@ describe("base de test (TEST_DATABASE_URL)", () => {
   test("logo d'une entreprise sans fichier stocké: récupéré puis servi", async () => {
     const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
     logoDeps.lookup = async () => ["93.184.216.34"];
-    logoDeps.fetch = (async () => new Response(png)) as unknown as typeof fetch;
+    logoDeps.fetch = async () => new Response(png);
     await auth("/api/entreprise", { method: "POST", body: JSON.stringify({ nom: "TEST-logo-ancien" }) });
     await sql`UPDATE companies SET logo = 'https://logo.example/a.png' WHERE nom = 'TEST-logo-ancien'`;
     const [{ id }] = await sql<{ id: number }[]>`SELECT id FROM companies WHERE nom = 'TEST-logo-ancien'`;

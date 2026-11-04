@@ -397,6 +397,18 @@ describe("base de test (TEST_DATABASE_URL)", () => {
     expect(await repo.hasFichier(`logo-${id}`)).toBe(true);
   });
 
+  test("logo injoignable: un seul essai, pas de nouvelle récupération à chaque GET", async () => {
+    let calls = 0;
+    logoDeps.lookup = async () => ["93.184.216.34"];
+    logoDeps.fetch = async () => (calls++, new Response(null, { status: 500 }));
+    await auth("/api/entreprise", { method: "POST", body: JSON.stringify({ nom: "TEST-logo-ko" }) });
+    await sql`UPDATE companies SET logo = 'https://logo.example/ko.png' WHERE nom = 'TEST-logo-ko'`;
+    const [{ id }] = await sql<{ id: number }[]>`SELECT id FROM companies WHERE nom = 'TEST-logo-ko'`;
+    await auth(`/api/logos/${id}`);
+    await auth(`/api/logos/${id}`);
+    expect(calls).toBe(1);
+  });
+
   test("entreprise supprimée -> son logo stocké aussi", async () => {
     await auth("/api/entreprise", { method: "POST", body: JSON.stringify({ nom: "TEST-logo-suppr" }) });
     const [{ id }] = await sql<{ id: number }[]>`SELECT id FROM companies WHERE nom = 'TEST-logo-suppr'`;

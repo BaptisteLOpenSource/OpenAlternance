@@ -228,6 +228,10 @@ async function storeLogo(companyId: number, url: string | null): Promise<void> {
   else await writeFichier(name, await fetchLogo(url));
 }
 
+// ponytail: per-process memory, lost on restart; persist if restarts make refetching hurt
+const LOGO_RETRY_MS = 10 * 60_000;
+const logoFailures = new Map<string, number>();
+
 // Logos set before they were stored have no row: fetch once on first view.
 export async function readCompanyLogo(companyId: number): Promise<Uint8Array | null> {
   const name = `logo-${companyId}`;
@@ -235,8 +239,11 @@ export async function readCompanyLogo(companyId: number): Promise<Uint8Array | n
   if (stored) return stored;
   const [row] = await sql<{ logo: string | null }[]>`SELECT logo FROM companies WHERE id = ${companyId}`;
   if (!row?.logo) return null;
+  const key = `${companyId}:${row.logo}`;
+  if (Date.now() - (logoFailures.get(key) ?? -LOGO_RETRY_MS) < LOGO_RETRY_MS) return null;
   const data = await fetchLogo(row.logo).catch(() => null);
   if (data) await writeFichier(name, data);
+  else logoFailures.set(key, Date.now());
   return data;
 }
 

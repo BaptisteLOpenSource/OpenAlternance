@@ -1,7 +1,6 @@
 import { describe, expect, test, beforeAll, afterAll, afterEach } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { createHash } from "node:crypto";
 
 // db.ts and api.ts read env at import, before beforeAll: point them at the
 // test DB here, or Bun's .env sends DB tests to production.
@@ -10,9 +9,10 @@ if (DB === process.env.DATABASE_URL) throw new Error("TEST_DATABASE_URL = DATABA
 process.env.DATABASE_URL = DB;
 process.env.OPENALTERNANCE_PASSWORD = "mot-de-passe-de-test-ok";
 const { handle, passwordProblem, authRequired } = await import("./api");
+const { digest } = await import("./auth");
 const { logoDeps } = await import("./logo");
 const ORIGIN = "http://127.0.0.1:3000";
-const fingerprint = (password: string) => createHash("sha256").update(password).digest("hex").slice(0, 16);
+const fingerprint = (password: string) => digest(password).toString("hex").slice(0, 16);
 const req = (path: string, init: RequestInit & { origin?: string } = {}) =>
   handle(
     new Request(`${ORIGIN}${path}`, {
@@ -95,7 +95,7 @@ test("hashes CSP = scripts inline du build (si dist existe)", () => {
   const csp = JSON.parse(readFileSync(join(import.meta.dir, "..", "vercel.json"), "utf8")).headers[0].headers.find(
     (h: { key: string }) => h.key === "Content-Security-Policy",
   ).value as string;
-  for (const [, body] of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) {
+  for (const [, body] of html.matchAll(/<script>([\s\S]*?)<\/script[^>]*>/gi)) {
     const hash = `'sha256-${crypto.createHash("sha256").update(body!).digest("base64")}'`;
     expect(csp).toContain(hash);
   }

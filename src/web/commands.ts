@@ -89,7 +89,7 @@ export const COMMANDS: Command[] = [
     label: "Basculer brouillon / envoyée",
     scope: ["company", "lettres"],
     run: ({ send, lettre }) =>
-      lettre && send("lettre-statut", { entreprise: lettre.entreprise, statut: lettre.statut === "envoyee" ? "brouillon" : "envoyee" }),
+      lettre?.entreprise && send("lettre-statut", { entreprise: lettre.entreprise, statut: lettre.statut === "envoyee" ? "brouillon" : "envoyee" }),
   },
   {
     id: "lettre-supprimer",

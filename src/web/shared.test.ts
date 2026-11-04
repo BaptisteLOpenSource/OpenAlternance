@@ -24,3 +24,14 @@ test("sendFiche garde les champs d'un envoi encore en vol", async () => {
   resolvers.at(-1)!(true);
   await later;
 });
+
+test("lettre-statut sans entreprise: rien n'est envoyé", async () => {
+  const { COMMANDS } = await import("./commands");
+  const sent: unknown[] = [];
+  const send: Send = async (...args) => (sent.push(args), true);
+  const run = COMMANDS.find((c) => c.id === "lettre-statut")!.run;
+  await run({ send, lettre: { entreprise: "", statut: "brouillon" } } as never);
+  expect(sent).toEqual([]);
+  await run({ send, lettre: { entreprise: "Acme", statut: "brouillon" } } as never);
+  expect(sent).toHaveLength(1);
+});

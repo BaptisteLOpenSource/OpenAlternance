@@ -348,7 +348,9 @@ export async function writeLettre(companyNom: string, content: string): Promise<
 
 export async function writeLettreFile(file: string, content: string): Promise<void> {
   if (!SAFE_NAME.test(file) || file === TEMPLATE_FILE) throw new Error(`Lettre introuvable: ${file}`);
-  await upsertLettre(file, content);
+  const rows = await sql`UPDATE lettres SET content = ${`${content}
+`} WHERE file = ${file} RETURNING file`;
+  if (!rows.length) throw new Error(`Lettre introuvable: ${file}`);
 }
 
 export async function writeTemplate(content: string): Promise<void> {

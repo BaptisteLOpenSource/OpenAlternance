@@ -353,6 +353,8 @@ describe("base de test (TEST_DATABASE_URL)", () => {
     expect(((await (await auth("/api/lettres/test-par-fichier.md")).json()) as { content: string }).content).toBe("b\n");
     expect((await save("_template.md", "x")).status).toBe(400);
     expect((await save("../x.md", "x")).status).toBe(400);
+    expect((await save("test-inconnue.md", "x")).status).toBe(400);
+    expect(await repo.readLettre("test-inconnue.md")).toBeNull();
   });
 
   test("lettre orpheline (entreprise supprimée): supprimée par son fichier", async () => {

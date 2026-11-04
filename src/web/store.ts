@@ -61,11 +61,11 @@ const post = (path: string, fields: unknown) =>
 export const fetchDocument = (name: string) =>
   request<{ format: string; content: string; html: string }>(`/api/documents/${encodeURIComponent(name)}`);
 
-// One decode per company per session; a failed logo gives no colors, the page keeps its default glow.
-const palettes = new Map<number, Promise<string[]>>();
-export const fetchPalette = (companyId: number): Promise<string[]> => {
-  let palette = palettes.get(companyId);
-  if (!palette) palettes.set(companyId, (palette = decodePalette(companyId)));
+const palettes = new Map<string, Promise<string[]>>();
+export const fetchPalette = (companyId: number, logo: string): Promise<string[]> => {
+  const key = `${companyId}:${logo}`;
+  let palette = palettes.get(key);
+  if (!palette) palettes.set(key, (palette = decodePalette(companyId)));
   return palette;
 };
 const decodePalette = (companyId: number) =>

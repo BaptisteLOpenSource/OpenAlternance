@@ -76,9 +76,9 @@ const NAV = [
 ] as const;
 
 // Company page: the two blobs take the logo's colors, default glow when there is none.
-function CompanyGlow({ id }: { id: number }) {
+function CompanyGlow({ id, logo }: { id: number; logo: string }) {
   const [palette, setPalette] = useState<string[]>([]);
-  useEffect(() => void fetchPalette(id).then(setPalette), [id]);
+  useEffect(() => void fetchPalette(id, logo).then(setPalette), [id, logo]);
   if (palette.length === 0) return GLOW.entreprises.map((cls) => <div class={cls} />);
   return palette.slice(0, 2).map((color, i) => <div class={GLOW.entreprises[i]} style={{ background: color, opacity: 0.1 }} />);
 }
@@ -527,7 +527,7 @@ function App() {
         aria-hidden
         class="pointer-events-none fixed inset-0 -z-10 overflow-hidden transition-opacity duration-700 starting:opacity-0 motion-reduce:transition-none"
       >
-        {companyId !== null ? <CompanyGlow id={companyId} /> : GLOW[page.path]?.map((cls) => <div class={cls} />)}
+        {companyId !== null ? <CompanyGlow id={companyId} logo={company?.logo ?? ""} /> : GLOW[page.path]?.map((cls) => <div class={cls} />)}
       </div>
       <Sidebar
         route={page.path}

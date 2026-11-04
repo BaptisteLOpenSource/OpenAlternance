@@ -1,5 +1,6 @@
 import { chmodSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import template from "../lettres/_template.md" with { type: "text" };
 
 export type Dialect = "postgres" | "sqlite";
 
@@ -38,8 +39,8 @@ if (dialect === "sqlite") {
 
 // Bun.SQL reports SQLite unique/primary-key hits with their own codes, not 23505.
 export function isUniqueViolation(error: unknown): boolean {
-  const code = (error as { code?: string }).code ?? "";
-  return /^(23505|SQLITE_CONSTRAINT_(UNIQUE|PRIMARYKEY))$/.test(code);
+  const { code, errno } = error as { code?: string; errno?: string };
+  return errno === "23505" || /^(23505|SQLITE_CONSTRAINT_(UNIQUE|PRIMARYKEY))$/.test(code ?? "");
 }
 
 export function schema(d: Dialect): string[] {
@@ -132,4 +133,6 @@ export function schema(d: Dialect): string[] {
 
 export async function migrate(): Promise<void> {
   for (const statement of schema(dialect)) await sql.unsafe(statement);
+  // Desktop never runs setup(): the letter template must ship with the schema.
+  await sql`INSERT INTO lettres (file, content) VALUES ('_template.md', ${template}) ON CONFLICT (file) DO NOTHING`;
 }

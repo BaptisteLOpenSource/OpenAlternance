@@ -26,7 +26,6 @@ export async function setup(): Promise<{ migrated: true; seeded: boolean }> {
   const read = (path: string) => Bun.file(path).text();
   const lettre = async (file: string, path: string) =>
     sql`INSERT INTO lettres (file, content) VALUES (${file}, ${await read(path)}) ON CONFLICT (file) DO NOTHING`;
-  await lettre("_template.md", "lettres/_template.md");
   for (const name of await readdir("exemples")) {
     const format = name.split(".").pop() as DocFormat;
     if (name.startsWith("lettre-")) await lettre(name, `exemples/${name}`);

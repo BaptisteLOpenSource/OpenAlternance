@@ -17,3 +17,16 @@ test("fetchPalette: nouveau logo -> nouveau décodage", async () => {
   await fetchPalette(7, "https://b/logo.png");
   expect(loaded).toHaveLength(2);
 });
+
+test("fetchPalette: entreprise sans logo -> aucune requête", async () => {
+  const loaded: string[] = [];
+  Object.assign(globalThis, {
+    Image: class {
+      set src(value: string) {
+        loaded.push(value);
+      }
+    },
+  });
+  expect(await fetchPalette(8, "")).toEqual([]);
+  expect(loaded).toHaveLength(0);
+});

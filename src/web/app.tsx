@@ -78,7 +78,10 @@ const NAV = [
 // Company page: the two blobs take the logo's colors, default glow when there is none.
 function CompanyGlow({ id, logo }: { id: number; logo: string }) {
   const [palette, setPalette] = useState<string[]>([]);
-  useEffect(() => void fetchPalette(id, logo).then(setPalette), [id, logo]);
+  useEffect(() => {
+    setPalette([]);
+    void fetchPalette(id, logo).then(setPalette);
+  }, [id, logo]);
   if (palette.length === 0) return GLOW.entreprises.map((cls) => <div class={cls} />);
   return palette.slice(0, 2).map((color, i) => <div class={GLOW.entreprises[i]} style={{ background: color, opacity: 0.1 }} />);
 }

@@ -63,6 +63,7 @@ export const fetchDocument = (name: string) =>
 
 const palettes = new Map<string, Promise<string[]>>();
 export const fetchPalette = (companyId: number, logo: string): Promise<string[]> => {
+  if (!logo) return Promise.resolve([]);
   const key = `${companyId}:${logo}`;
   let palette = palettes.get(key);
   if (!palette) palettes.set(key, (palette = decodePalette(companyId)));

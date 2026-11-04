@@ -1,5 +1,5 @@
 import { type Profil, fillProfil, slug } from "../logic";
-import type { CompanyRow, Lettre } from "../repo";
+import type { CompanyRow, Lettre, Poste } from "../repo";
 import { type Open, type Send, relanceEnvoyee } from "./shared";
 import { type AppState, fetchLettre } from "./store";
 
@@ -20,8 +20,14 @@ export type Command = {
   run: (ctx: Ctx) => unknown;
 };
 
-export const lettreOf = (company: CompanyRow, state: AppState) =>
-  state.lettres.find((l) => l.type === "lettre" && l.entreprise.toLowerCase() === company.nom.toLowerCase());
+// Letter of a poste; spontanée (no posteId) = letter without poste, or whose poste was deleted.
+export const lettreOf = (company: CompanyRow, state: AppState, posteId?: number) =>
+  state.lettres.find(
+    (l) =>
+      l.type === "lettre" &&
+      l.entreprise.toLowerCase() === company.nom.toLowerCase() &&
+      (l.poste !== undefined && state.postes.some((p) => p.id === l.poste) ? l.poste : undefined) === posteId,
+  );
 
 export const deleteLettre = async (lettre: Lettre, send: Send): Promise<boolean> =>
   confirm(`Supprimer la lettre de ${lettre.entreprise || lettre.file} ?`) && (await send("lettre-supprimer", { file: lettre.file }));
@@ -31,22 +37,24 @@ export async function openLettre(company: CompanyRow, lettre: Lettre | null | un
   else await createLettre(company, send, profil);
 }
 
-export async function createLettre(company: CompanyRow, send: Send, profil: Profil): Promise<string | null> {
+export async function createLettre(company: CompanyRow, send: Send, profil: Profil, poste?: Poste): Promise<string | null> {
   const { content } = await fetchLettre("_template.md");
   const draft = fillProfil(
     content
       .replace("type: template-lettre", `type: lettre
 entreprise: ${company.nom}
-statut: brouillon`)
+${poste ? `poste: ${poste.id}\n` : ""}statut: brouillon`)
       .replaceAll("{{entreprise}}", company.nom)
       .replaceAll("{{ville}}", company.ville || "{{ville}}")
-      .replaceAll("{{poste}}", company.poste || "{{poste}}")
+      .replaceAll("{{poste}}", poste?.intitule || company.poste || "{{poste}}")
+      .replaceAll("{{contrat}}", poste?.contrat ?? "alternance")
       .replaceAll("{{date}}", new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })),
     profil,
   );
-  // same name as repo.writeLettre gives a new letter
-  const file = `${slug(company.nom)}.md`;
-  if (!(await send("lettre", { entreprise: company.nom, content: draft.trimEnd() }))) return null;
+  // same name as repo.writeLettre gives a new letter (a taken name gets `-<poste id>` server side)
+  const file = poste ? `${slug(company.nom)}-${slug(poste.intitule)}.md` : `${slug(company.nom)}.md`;
+  const target: Record<string, string> = poste ? { poste: String(poste.id) } : {};
+  if (!(await send("lettre", { entreprise: company.nom, content: draft.trimEnd(), ...target }))) return null;
   location.hash = `#/lettres/${file}`;
   return file;
 }

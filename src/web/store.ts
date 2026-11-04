@@ -1,12 +1,13 @@
 import { useEffect, useState } from "preact/hooks";
 import { type Profil, logoPalette } from "../logic";
-import type { CompanyRow, Contact, DocumentRow, Interaction, Lettre } from "../repo";
+import type { CompanyRow, Contact, DocumentRow, Interaction, Lettre, Poste } from "../repo";
 
 export type AppState = {
   today: string;
   companies: CompanyRow[];
   contacts: Contact[];
   interactions: (Interaction & { nom: string })[];
+  postes: Poste[];
   lettres: Lettre[];
   pdfs: string[];
   documents: DocumentRow[];

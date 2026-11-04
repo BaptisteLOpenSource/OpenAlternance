@@ -184,11 +184,11 @@ const ACTIONS: Record<string, (required: Field, optional: Optional, body: Record
   "entreprise-supprimer": (required) => repo.deleteCompany(required("entreprise")),
   lettre: (required, optional, body) => {
     const file = optional("file");
-    return file ? repo.writeLettreFile(file, content(body)) : repo.writeLettre(required("entreprise"), content(body));
+    return file ? repo.writeLettreFile(file, content(body)) : repo.writeLettre(required("entreprise"), content(body), refId(optional, "poste"));
   },
   template: (_required, _optional, body) => repo.writeTemplate(content(body)),
   "lettre-statut": (required, optional) =>
-    repo.setLettreStatut(required("entreprise"), oneOf(required("statut"), LETTRE_STATUTS, "statut"), optional("date")),
+    repo.setLettreStatut(required("entreprise"), oneOf(required("statut"), LETTRE_STATUTS, "statut"), optional("date"), refId(optional, "poste")),
   "lettre-supprimer": (required) => repo.deleteLettre(required("file")),
   statut: (required, optional) => repo.setStatut(required("entreprise"), oneOf(required("statut"), STATUTS, "statut"), refId(optional, "poste")),
   "sans-reponse": (required, optional) => repo.closeRelance(required("entreprise"), refId(optional, "poste")),

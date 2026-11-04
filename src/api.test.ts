@@ -519,7 +519,7 @@ describe("base de test (TEST_DATABASE_URL)", () => {
   type Etat = {
     postes: { id: number; intitule: string; contrat: string; annonce: string | null; agence_id: number | null }[];
     agences: { id: number; ville: string }[];
-    interactions: { nom: string; poste_id: number | null }[];
+    interactions: { nom: string; type: string; poste_id: number | null }[];
   };
   const etat = async () => (await (await auth("/api/state")).json()) as Etat;
   const posteDe = async (nom: string) => {
@@ -563,6 +563,40 @@ describe("base de test (TEST_DATABASE_URL)", () => {
     expect((await etat()).interactions.find((i) => i.nom === "TEST-poste-suppr")?.poste_id).toBe(id);
     await auth("/api/poste-supprimer", { method: "POST", body: JSON.stringify({ id: String(id) }) });
     expect((await etat()).interactions.find((i) => i.nom === "TEST-poste-suppr")?.poste_id).toBeNull();
+  });
+
+  test("lettre par poste: un fichier et une candidature par poste, renommage suit toutes les lettres", async () => {
+    const nom = "TEST-grizzlead";
+    const lettreDe = (poste: number) =>
+      auth("/api/lettre", {
+        method: "POST",
+        body: JSON.stringify({ entreprise: nom, poste: String(poste), content: `---\ntype: lettre\nentreprise: ${nom}\nstatut: brouillon\n---\n\nx` }),
+      });
+    const lettresDe = async (entreprise: string) =>
+      ((await (await auth("/api/state")).json()) as { lettres: { file: string; entreprise: string; poste?: number }[] }).lettres.filter((l) => l.entreprise === entreprise);
+    await auth("/api/entreprise", { method: "POST", body: JSON.stringify({ nom }) });
+    await auth("/api/poste", { method: "POST", body: JSON.stringify({ entreprise: nom, intitule: "Dev Web" }) });
+    const web = await posteDe(nom);
+    await auth("/api/poste", { method: "POST", body: JSON.stringify({ entreprise: nom, intitule: "Data" }) });
+    const data = await posteDe(nom);
+    expect((await lettreDe(web)).status).toBe(200);
+    expect((await lettreDe(data)).status).toBe(200);
+    const lettres = await lettresDe(nom);
+    expect(lettres.find((l) => l.poste === web)?.file).toBe("test-grizzlead-dev-web.md");
+    expect(lettres.find((l) => l.poste === data)?.file).toBe("test-grizzlead-data.md");
+    const envoyer = (poste: number) =>
+      auth("/api/lettre-statut", { method: "POST", body: JSON.stringify({ entreprise: nom, statut: "envoyee", date: "2026-10-01", poste: String(poste) }) });
+    expect((await envoyer(web)).status).toBe(200);
+    expect((await envoyer(data)).status).toBe(200);
+    const candidatures = (await etat()).interactions.filter((i) => i.nom === nom && i.type === "candidature");
+    expect(candidatures.map((i) => i.poste_id).sort()).toEqual([web, data].sort());
+    expect((await auth("/api/entreprise-renommer", { method: "POST", body: JSON.stringify({ entreprise: nom, nom: "TEST-grizzlead-renomme" }) })).status).toBe(200);
+    for (const l of await lettresDe("TEST-grizzlead-renomme")) {
+      const { content } = (await (await auth(`/api/lettres/${l.file}`)).json()) as { content: string };
+      expect(content).toContain("entreprise: TEST-grizzlead-renomme");
+    }
+    expect(await lettresDe("TEST-grizzlead-renomme")).toHaveLength(2);
+    await auth("/api/entreprise-supprimer", { method: "POST", body: JSON.stringify({ entreprise: "TEST-grizzlead-renomme" }) });
   });
 
   test("agence: créer, modifier, lier à un poste, supprimer -> poste au siège", async () => {

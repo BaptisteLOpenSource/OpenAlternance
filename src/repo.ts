@@ -28,7 +28,7 @@ const SAFE_DOCUMENT = /^[\w.-]+\.(md|txt|html|pdf)$/;
 export type DocumentRow = { name: string; format: DocFormat };
 const TEMPLATE_FILE = "_template.md";
 
-export type Lettre = { file: string; type: string; entreprise: string; statut: string; date_envoi?: string };
+export type Lettre = { file: string; type: string; entreprise: string; statut: string; date_envoi?: string; poste?: number };
 
 export type Company = {
   id: number;
@@ -377,11 +377,11 @@ export async function updateCompany(companyNom: string, fields: Fiche): Promise<
 // Letter follows the rename: its frontmatter names the company, and letters are matched by that name.
 export async function renameCompany(companyNom: string, nom: string): Promise<void> {
   const company = await findCompany(companyNom);
-  const letter = (await listLettres()).find((l) => l.type === "lettre" && l.entreprise.toLowerCase() === company.nom.toLowerCase());
+  const letters = (await listLettres()).filter((l) => l.type === "lettre" && l.entreprise.toLowerCase() === company.nom.toLowerCase());
   try {
     await sql.begin(async (tx) => {
       await tx`UPDATE companies SET nom = ${nom} WHERE id = ${company.id}`;
-      if (letter) {
+      for (const letter of letters) {
         const content = await readLettre(letter.file);
         await tx`UPDATE lettres SET content = ${setFrontmatter(content ?? "", { entreprise: nom })} WHERE file = ${letter.file}`;
       }
@@ -420,7 +420,14 @@ const toLettre = (file: string, content: string): Lettre => {
   // a dated letter without statut was sent: derive it instead of showing brouillon
   const statut = fields.statut || (fields.date_envoi ? "envoyee" : "");
   // legacy rows stored "YYYY-MM-DD HH:MM": keep the date part, the UI parses it as ISO
-  return { file, type: fields.type ?? "", entreprise: fields.entreprise ?? "", statut, date_envoi: fields.date_envoi?.slice(0, 10) };
+  return {
+    file,
+    type: fields.type ?? "",
+    entreprise: fields.entreprise ?? "",
+    statut,
+    date_envoi: fields.date_envoi?.slice(0, 10),
+    poste: fields.poste ? Number(fields.poste) : undefined,
+  };
 };
 
 export async function listLettres(): Promise<Lettre[]> {
@@ -434,18 +441,33 @@ export async function readLettre(file: string): Promise<string | null> {
   return row?.content ?? null;
 }
 
+// Letter whose poste was deleted reads as spontanée.
+const posteOf = (letter: Lettre, postes: Set<number>) => (letter.poste !== undefined && postes.has(letter.poste) ? letter.poste : undefined);
+
 // letters outlive deleted companies: match by name before findCompany
-async function lettreFile(companyNom: string): Promise<string> {
-  const existing = (await listLettres()).find((l) => l.type === "lettre" && l.entreprise.toLowerCase() === companyNom.toLowerCase());
-  return existing?.file ?? `${slug((await findCompany(companyNom)).nom)}.md`;
+async function lettreFile(companyNom: string, posteId?: number): Promise<string> {
+  const letters = (await listLettres()).filter((l) => l.type === "lettre" && l.entreprise.toLowerCase() === companyNom.toLowerCase());
+  const postes = new Set(
+    (await sql<{ id: number }[]>`SELECT p.id FROM postes p JOIN companies c ON c.id = p.company_id WHERE lower(c.nom) = lower(${companyNom})`).map((p) => p.id),
+  );
+  const existing = letters.find((l) => posteOf(l, postes) === posteId);
+  if (existing) return existing.file;
+  const company = await findCompany(companyNom);
+  if (posteId === undefined) return `${slug(company.nom)}.md`;
+  const [poste] = await sql<{ intitule: string }[]>`SELECT intitule FROM postes WHERE id = ${posteId} AND company_id = ${company.id}`;
+  if (!poste) throw new Error("Poste introuvable");
+  const base = `${slug(company.nom)}-${slug(poste.intitule)}`;
+  const [taken] = await sql`SELECT 1 AS ok FROM lettres WHERE file = ${`${base}.md`}`;
+  return taken ? `${base}-${posteId}.md` : `${base}.md`;
 }
 
 const upsertLettre = (file: string, content: string) =>
   sql`INSERT INTO lettres (file, content) VALUES (${file}, ${`${content}\n`})
     ON CONFLICT (file) DO UPDATE SET content = EXCLUDED.content`;
 
-export async function writeLettre(companyNom: string, content: string): Promise<void> {
-  await upsertLettre(await lettreFile(companyNom), content);
+export async function writeLettre(companyNom: string, content: string, posteId?: number): Promise<void> {
+  const file = await lettreFile(companyNom, posteId);
+  await upsertLettre(file, posteId === undefined ? content : setFrontmatter(content, { poste: String(posteId) }));
 }
 
 export async function writeLettreFile(file: string, content: string): Promise<void> {
@@ -460,22 +482,23 @@ export async function writeTemplate(content: string): Promise<void> {
 }
 
 // Envoyee stamps date_envoi (default today); brouillon clears it.
-export async function setLettreStatut(companyNom: string, statut: LettreStatut, date?: string): Promise<void> {
-  const file = await lettreFile(companyNom);
+export async function setLettreStatut(companyNom: string, statut: LettreStatut, date?: string, posteId?: number): Promise<void> {
+  const file = await lettreFile(companyNom, posteId);
   const content = await readLettre(file);
   if (content === null) throw new Error(`Lettre introuvable: ${companyNom}`);
   const envoi = statut === "envoyee" ? isoDate(date ?? today()) : "";
   await sql`UPDATE lettres SET content = ${setFrontmatter(content, { statut, date_envoi: envoi })} WHERE file = ${file}`;
-  if (statut === "envoyee") await logCandidature(companyNom, envoi, file);
+  if (statut === "envoyee") await logCandidature(companyNom, envoi, file, posteId);
   else await unlogCandidature(file);
 }
 
-// Sent letter = candidature: logged once, tagged with its letter so brouillon can undo it.
-async function logCandidature(companyNom: string, date: string, file: string): Promise<void> {
+// Sent letter = candidature: logged once per poste, tagged with its letter so brouillon can undo it.
+async function logCandidature(companyNom: string, date: string, file: string, posteId?: number): Promise<void> {
   const [company] = await sql<{ id: number }[]>`SELECT id FROM companies WHERE lower(nom) = lower(${companyNom})`;
   if (!company) return;
-  const [logged] = await sql`SELECT 1 FROM interactions WHERE company_id = ${company.id} AND type = 'candidature'`;
-  if (!logged) await logInteraction(companyNom, "candidature", { date, auto: `lettre:${file}` });
+  const logged = await sql<{ poste_id: number | null }[]>`SELECT poste_id FROM interactions WHERE company_id = ${company.id} AND type = 'candidature'`;
+  if (!logged.some((row) => row.poste_id === (posteId ?? null)))
+    await logInteraction(companyNom, "candidature", { date, auto: `lettre:${file}`, posteId });
 }
 
 // Hand-logged candidatures carry no tag, so they survive.

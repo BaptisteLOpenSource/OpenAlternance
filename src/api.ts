@@ -199,7 +199,7 @@ async function handleGet(path: string): Promise<Response> {
   if (path.startsWith("/api/logos/")) {
     const id = path.slice("/api/logos/".length);
     if (!/^\d+$/.test(id)) return notFound();
-    const data = await repo.readFichier(`logo-${id}`);
+    const data = await repo.readCompanyLogo(Number(id));
     if (!data) return notFound();
     const type = logoType(data) ?? "application/octet-stream";
     return new Response(new Uint8Array(data), { headers: { "content-type": type, ...(type === "image/svg+xml" ? SVG_HEADERS : {}) } });

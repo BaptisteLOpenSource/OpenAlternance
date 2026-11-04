@@ -6,6 +6,8 @@ const PRIVATE = /^(10\.|127\.|0\.|169\.254\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\
 
 type Deps = { lookup?: (host: string) => Promise<string[]>; fetch?: typeof fetch };
 
+export const logoDeps: Deps = {};
+
 const lookupAll = async (host: string) => (await lookup(host, { all: true })).map((entry) => entry.address);
 
 // Magic bytes only: the type we serve comes from the content, never from the remote header.
@@ -20,7 +22,8 @@ export function logoType(bytes: Uint8Array): string | null {
 }
 
 // ponytail: DNS checked, then fetched again; a rebinding race is possible. Pin the IP if the logo feature grows.
-export async function fetchLogo(url: string, deps: Deps = {}): Promise<Uint8Array> {
+export async function fetchLogo(url: string, given: Deps = {}): Promise<Uint8Array> {
+  const deps = { ...logoDeps, ...given };
   const target = new URL(url);
   if (target.protocol !== "https:" && target.protocol !== "http:") throw new Error("logo: http(s) seulement");
   if ((await (deps.lookup ?? lookupAll)(target.hostname)).some((address) => PRIVATE.test(address))) throw new Error("logo: adresse interne refusée");

@@ -10,6 +10,7 @@ if (DB === process.env.DATABASE_URL) throw new Error("TEST_DATABASE_URL = DATABA
 process.env.DATABASE_URL = DB;
 process.env.OPENALTERNANCE_PASSWORD = "mot-de-passe-de-test-ok";
 const { handle, passwordProblem, authRequired } = await import("./api");
+const { logoDeps } = await import("./logo");
 const ORIGIN = "http://127.0.0.1:3000";
 const fingerprint = (password: string) => createHash("sha256").update(password).digest("hex").slice(0, 16);
 const req = (path: string, init: RequestInit & { origin?: string } = {}) =>
@@ -353,6 +354,20 @@ describe("base de test (TEST_DATABASE_URL)", () => {
     expect(((await res.json()) as { error: string }).error).toMatch(/interne/);
     const state = (await (await auth("/api/state")).json()) as { companies: { nom: string; logo: string | null }[] };
     expect(state.companies.find((c) => c.nom === "TEST-ssrf")?.logo).toBeNull();
+  });
+
+  test("logo d'une entreprise sans fichier stocké: récupéré puis servi", async () => {
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    logoDeps.lookup = async () => ["93.184.216.34"];
+    logoDeps.fetch = (async () => new Response(png)) as unknown as typeof fetch;
+    await auth("/api/entreprise", { method: "POST", body: JSON.stringify({ nom: "TEST-logo-ancien" }) });
+    await sql`UPDATE companies SET logo = 'https://logo.example/a.png' WHERE nom = 'TEST-logo-ancien'`;
+    const [{ id }] = await sql<{ id: number }[]>`SELECT id FROM companies WHERE nom = 'TEST-logo-ancien'`;
+    const res = await auth(`/api/logos/${id}`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("image/png");
+    expect(await repo.hasFichier(`logo-${id}`)).toBe(true);
+    logoDeps.lookup = logoDeps.fetch = undefined;
   });
 
   test("logo stocké: servi par son type sniffé, même origine", async () => {

@@ -225,6 +225,18 @@ async function storeLogo(companyId: number, url: string | null): Promise<void> {
   else await writeFichier(name, await fetchLogo(url));
 }
 
+// Logos set before they were stored have no row: fetch once on first view.
+export async function readCompanyLogo(companyId: number): Promise<Uint8Array | null> {
+  const name = `logo-${companyId}`;
+  const stored = await readFichier(name);
+  if (stored) return stored;
+  const [row] = await sql<{ logo: string | null }[]>`SELECT logo FROM companies WHERE id = ${companyId}`;
+  if (!row?.logo) return null;
+  const data = await fetchLogo(row.logo).catch(() => null);
+  if (data) await writeFichier(name, data);
+  return data;
+}
+
 export async function updateCompany(companyNom: string, fields: Fiche): Promise<void> {
   const company = await findCompany(companyNom);
   const logo = site(fields.logo);

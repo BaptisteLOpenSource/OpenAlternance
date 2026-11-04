@@ -56,7 +56,9 @@ export async function downloadUpdate(url: string, tempDir: string, fetchFn: type
 }
 
 export function runInstaller(file: string): void {
+  // Without detached, Windows kills the installer when we exit.
   Bun.spawn([file, "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"], {
+    detached: true,
     stdin: "ignore",
     stdout: "ignore",
     stderr: "ignore",

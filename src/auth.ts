@@ -1,10 +1,11 @@
-import { randomBytes, createHash, timingSafeEqual } from "node:crypto";
+import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 
 export const COOKIE = "openalternance";
 export const SESSION_DAYS = 30;
 
-// Hash both sides first: timingSafeEqual needs equal lengths, and this hides the password length.
-export const digest = (value: string) => createHash("sha256").update(value).digest();
+// scrypt, not sha256: session keys in DB embed this fingerprint, keep it
+// slow to brute-force. Equal lengths for timingSafeEqual, hides length.
+export const digest = (value: string) => scryptSync(value, COOKIE, 32);
 
 export function passwordMatches(input: string, expected: string): boolean {
   return timingSafeEqual(digest(input), digest(expected));

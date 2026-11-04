@@ -321,6 +321,17 @@ describe("base de test (TEST_DATABASE_URL)", () => {
     expect((await auth("/api/cv.pdf")).status).toBe(200);
   });
 
+  test("enregistrer un document ou une lettre vidés -> 200, contenu vide", async () => {
+    await auth("/api/document", { method: "POST", body: JSON.stringify({ titre: "vide-test", format: "md", content: "x" }) });
+    const doc = await auth("/api/document-modifier", { method: "POST", body: JSON.stringify({ name: "vide-test.md", content: "" }) });
+    expect(doc.status).toBe(200);
+    expect(((await (await auth("/api/documents/vide-test.md")).json()) as { content: string }).content).toBe("");
+    await sql`DELETE FROM documents WHERE name = 'vide-test.md'`;
+    await auth("/api/entreprise", { method: "POST", body: JSON.stringify({ nom: "TEST-lettre-vide" }) });
+    const lettre = await auth("/api/lettre", { method: "POST", body: JSON.stringify({ entreprise: "TEST-lettre-vide", content: "" }) });
+    expect(lettre.status).toBe(200);
+  });
+
   test("document-texte: PDF absent -> 400", async () => {
     const res = await auth("/api/document-texte", { method: "POST", body: JSON.stringify({ name: "absent.pdf" }) });
     expect(res.status).toBe(400);

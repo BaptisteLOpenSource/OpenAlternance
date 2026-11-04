@@ -133,11 +133,11 @@ const ACTIONS: Record<string, (required: Field, optional: (name: string) => stri
     await repo.addDocument(`${name.slice(0, -".pdf".length)}.html`, "html", await pdfToHtml(data));
   },
   cv: async (required) => repo.writeFichier("cv.pdf", pdfBytes(required("data"))),
-  "document-modifier": (required) => repo.updateDocument(required("name"), required("content")),
+  "document-modifier": (required, optional) => repo.updateDocument(required("name"), optional("content") ?? ""),
   "document-supprimer": (required) => repo.deleteDocument(required("name")),
   "entreprise-supprimer": (required) => repo.deleteCompany(required("entreprise")),
-  lettre: (required) => repo.writeLettre(required("entreprise"), required("content")),
-  template: (required) => repo.writeTemplate(required("content")),
+  lettre: (required, optional) => repo.writeLettre(required("entreprise"), optional("content") ?? ""),
+  template: (_required, optional) => repo.writeTemplate(optional("content") ?? ""),
   "lettre-statut": (required, optional) =>
     repo.setLettreStatut(required("entreprise"), oneOf(required("statut"), LETTRE_STATUTS, "statut"), optional("date")),
   "lettre-supprimer": (required) => repo.deleteLettre(required("entreprise")),

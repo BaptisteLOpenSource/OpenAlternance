@@ -62,3 +62,17 @@ test("isNewer ignores prerelease suffix instead of NaN", () => {
   expect(isNewer("0.1.1-beta", "0.1.0")).toBe(true);
   expect(isNewer("0.1.1-beta", "0.1.1")).toBe(false);
 });
+
+// Regression: a non-detached child died with the app, update never installed.
+test.skipIf(process.platform !== "win32")("runInstaller's installer outlives the app", async () => {
+  const { mkdtempSync, existsSync, writeFileSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const dir = mkdtempSync(join((await import("node:os")).tmpdir(), "oa-setup-"));
+  const marker = join(dir, "installed.txt");
+  const setup = join(dir, "setup.cmd");
+  writeFileSync(setup, `@ping -n 2 127.0.0.1 >nul\r\n@echo ok> "${marker}"\r\n`);
+  const app = Bun.spawn(["bun", "-e", `(await import(${JSON.stringify(import.meta.dir + "/update.ts")})).runInstaller(${JSON.stringify(setup)})`]);
+  await app.exited;
+  for (let i = 0; i < 50 && !existsSync(marker); i++) await Bun.sleep(100);
+  expect(existsSync(marker)).toBe(true);
+});

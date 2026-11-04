@@ -1,4 +1,4 @@
-import { describe, expect, test, beforeAll, afterAll } from "bun:test";
+import { describe, expect, test, beforeAll, afterAll, afterEach } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
@@ -108,6 +108,10 @@ describe("base de test (TEST_DATABASE_URL)", () => {
   let cookie = "";
   const login = async (password: string) =>
     req("/api/login", { method: "POST", origin: ORIGIN, body: JSON.stringify({ password }) });
+
+  afterEach(() => {
+    logoDeps.lookup = logoDeps.fetch = undefined;
+  });
 
   beforeAll(async () => {
     ({ sql } = await import("./db"));
@@ -391,7 +395,6 @@ describe("base de test (TEST_DATABASE_URL)", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("image/png");
     expect(await repo.hasFichier(`logo-${id}`)).toBe(true);
-    logoDeps.lookup = logoDeps.fetch = undefined;
   });
 
   test("entreprise supprimée -> son logo stocké aussi", async () => {

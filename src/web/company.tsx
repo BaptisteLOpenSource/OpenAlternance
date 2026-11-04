@@ -156,7 +156,7 @@ export function CompanyPage({ state, id, send, onOpen }: { state: AppState; id: 
         <div class="grid gap-5 px-6 pb-6">
           <div class="-mt-9 flex flex-wrap items-end justify-between gap-3">
             <div class="flex size-[4.5rem] items-center justify-center overflow-hidden rounded-2xl border border-border/40 bg-card text-3xl font-semibold shadow-sm">
-              {company.logo && isWebUrl(company.logo) ? <img src={company.logo} alt="" class="size-full object-contain p-2" /> : company.nom[0]?.toUpperCase()}
+              {company.logo && isWebUrl(company.logo) ? <img src={`/api/logos/${company.id}`} alt="" class="size-full object-contain p-2" /> : company.nom[0]?.toUpperCase()}
             </div>
             <div class="flex flex-wrap gap-2">
               <Button size="sm" onClick={() => onOpen({ kind: "echange", company: company.nom })}>

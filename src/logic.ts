@@ -308,3 +308,30 @@ export const toTsv = (rows: readonly (readonly string[])[]) => rows.map((row) =>
 
 const ENTITY: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 export const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (c) => ENTITY[c]);
+
+// Transparent pixels never vote; near-white and near-black only when nothing else is left.
+export function logoPalette(pixels: Uint8ClampedArray, max = 3): string[] {
+  const buckets = new Map<number, { count: number; r: number; g: number; b: number }>();
+  const add = (r: number, g: number, b: number) => {
+    const key = ((r >> 4) << 8) | ((g >> 4) << 4) | (b >> 4);
+    const bucket = buckets.get(key) ?? { count: 0, r: 0, g: 0, b: 0 };
+    bucket.count++;
+    bucket.r += r;
+    bucket.g += g;
+    bucket.b += b;
+    buckets.set(key, bucket);
+  };
+  const neutral = (r: number, g: number, b: number) => (r > 235 && g > 235 && b > 235) || (r < 20 && g < 20 && b < 20);
+  const kept: [number, number, number][] = [];
+  for (let i = 0; i < pixels.length; i += 4) {
+    if (pixels[i + 3]! < 128) continue;
+    const rgb: [number, number, number] = [pixels[i]!, pixels[i + 1]!, pixels[i + 2]!];
+    if (!neutral(...rgb)) add(...rgb);
+    kept.push(rgb);
+  }
+  if (buckets.size === 0) for (const rgb of kept) add(...rgb);
+  return [...buckets.values()]
+    .sort((a, b) => b.count - a.count)
+    .slice(0, max)
+    .map((bucket) => `#${[bucket.r, bucket.g, bucket.b].map((c) => Math.round(c / bucket.count).toString(16).padStart(2, "0")).join("")}`);
+}

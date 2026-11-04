@@ -2,6 +2,7 @@ import { SESSION_DAYS, clearSessionCookie, digest, newSessionToken, passwordMatc
 import { sql } from "./db";
 import { FICHE_TEXTES, LETTRE_STATUTS, MAIL_CANAUX, NOM_FICHIER_DEFAUT, STATUTS, SUIVIS, TYPES, delaiDays, documentFile, isoAgo, isoDate, oneOf, stripFrontmatter, today } from "./logic";
 import { MAX_PDF_BASE64, pdfToHtml, renderDocument } from "./documents";
+import { logoType } from "./logo";
 import * as repo from "./repo";
 
 const PASSWORD = process.env.OPENALTERNANCE_PASSWORD ?? "";
@@ -182,20 +183,26 @@ async function logout(req: Request): Promise<Response> {
   return json({ ok: true }, 200, { "set-cookie": clearSessionCookie() });
 }
 
-async function file(name: string, type: string): Promise<Response> {
+// Opened directly, an SVG runs its scripts on this origin: deny everything but inline style.
+const SVG_HEADERS = { "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'" };
+
+async function file(name: string, type: string, headers: Record<string, string> = {}): Promise<Response> {
   const data = await repo.readFichier(name);
-  return data ? new Response(new Uint8Array(data), { headers: { "content-type": type } }) : notFound();
+  return data ? new Response(new Uint8Array(data), { headers: { "content-type": type, ...headers } }) : notFound();
 }
 
 async function handleGet(path: string): Promise<Response> {
   if (path === "/api/state") return json(await state());
   if (path === "/api/cv.pdf") return file("cv.pdf", "application/pdf");
   if (path === "/api/logo.png") return file("logo.png", "image/png");
-  if (path === "/api/logo.svg") {
-    const res = await file("logo.svg", "image/svg+xml");
-    // Opened directly, an SVG runs its scripts on this origin: deny everything but inline style.
-    res.headers.set("content-security-policy", "default-src 'none'; style-src 'unsafe-inline'");
-    return res;
+  if (path === "/api/logo.svg") return file("logo.svg", "image/svg+xml", SVG_HEADERS);
+  if (path.startsWith("/api/logos/")) {
+    const id = path.slice("/api/logos/".length);
+    if (!/^\d+$/.test(id)) return notFound();
+    const data = await repo.readFichier(`logo-${id}`);
+    if (!data) return notFound();
+    const type = logoType(data) ?? "application/octet-stream";
+    return new Response(new Uint8Array(data), { headers: { "content-type": type, ...(type === "image/svg+xml" ? SVG_HEADERS : {}) } });
   }
   if (path.startsWith("/api/fichiers/")) {
     const name = decodeURIComponent(path.slice("/api/fichiers/".length));

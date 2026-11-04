@@ -40,7 +40,7 @@ import { ComptePage } from "./profil";
 import { TableurPage } from "./tableur";
 import { TodoPage } from "./todo";
 import { type DialogState, type Open, isTodo, readHidden, store, stored, writeHidden } from "./shared";
-import { type AppState, useStore } from "./store";
+import { type AppState, fetchPalette, useStore } from "./store";
 import { ToastProvider, Tooltip } from "./fx";
 import { Button, Dialog, Input, cn } from "./ui";
 
@@ -74,6 +74,14 @@ const NAV = [
     items: [{ path: "compte", label: "Mon compte", icon: UserRound }],
   },
 ] as const;
+
+// Company page: the two blobs take the logo's colors, default glow when there is none.
+function CompanyGlow({ id }: { id: number }) {
+  const [palette, setPalette] = useState<string[]>([]);
+  useEffect(() => void fetchPalette(id).then(setPalette), [id]);
+  if (palette.length === 0) return GLOW.entreprises.map((cls) => <div class={cls} />);
+  return palette.slice(0, 2).map((color, i) => <div class={GLOW.entreprises[i]} style={{ background: color, opacity: 0.1 }} />);
+}
 
 // Blurred corner blobs per page; never centered. Keys = page path, "" = dashboard.
 const GLOW: Record<string, string[]> = {
@@ -519,7 +527,7 @@ function App() {
         aria-hidden
         class="pointer-events-none fixed inset-0 -z-10 overflow-hidden transition-opacity duration-700 starting:opacity-0 motion-reduce:transition-none"
       >
-        {GLOW[page.path]?.map((cls) => <div class={cls} />)}
+        {companyId !== null ? <CompanyGlow id={companyId} /> : GLOW[page.path]?.map((cls) => <div class={cls} />)}
       </div>
       <Sidebar
         route={page.path}

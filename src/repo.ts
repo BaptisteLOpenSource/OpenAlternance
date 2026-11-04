@@ -1,4 +1,5 @@
 import { isUniqueViolation, sql } from "./db";
+import { fetchLogo } from "./logo";
 import {
   CLOSING_STATUTS,
   type DocFormat,
@@ -217,13 +218,22 @@ export type Fiche = {
   mail_canal?: string;
 } & Partial<Record<FicheExtra, string>>;
 
+// Logo bytes are copied on save: the page never loads the remote URL.
+async function storeLogo(companyId: number, url: string | null): Promise<void> {
+  const name = `logo-${companyId}`;
+  if (url === null) await sql`DELETE FROM fichiers WHERE name = ${name}`;
+  else await writeFichier(name, await fetchLogo(url));
+}
+
 export async function updateCompany(companyNom: string, fields: Fiche): Promise<void> {
   const company = await findCompany(companyNom);
+  const logo = site(fields.logo);
+  if (logo !== company.logo) await storeLogo(company.id, logo);
   await sql`UPDATE companies SET
     ville = ${fields.ville ?? null},
     site = ${site(fields.site)},
     notes = ${fields.notes ?? null},
-    logo = ${site(fields.logo)},
+    logo = ${logo},
     poste = ${fields.poste ?? null},
     publication = ${fields.publication ?? null},
     candidatures = ${fields.candidatures ?? null},

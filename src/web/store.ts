@@ -1,5 +1,5 @@
 import { useEffect, useState } from "preact/hooks";
-import type { Profil } from "../logic";
+import { type Profil, logoPalette } from "../logic";
 import type { CompanyRow, Contact, DocumentRow, Interaction, Lettre } from "../repo";
 
 export type AppState = {
@@ -60,6 +60,28 @@ const post = (path: string, fields: unknown) =>
 
 export const fetchDocument = (name: string) =>
   request<{ format: string; content: string; html: string }>(`/api/documents/${encodeURIComponent(name)}`);
+
+// One decode per company per session; a failed logo gives no colors, the page keeps its default glow.
+const palettes = new Map<number, Promise<string[]>>();
+export const fetchPalette = (companyId: number): Promise<string[]> => {
+  let palette = palettes.get(companyId);
+  if (!palette) palettes.set(companyId, (palette = decodePalette(companyId)));
+  return palette;
+};
+const decodePalette = (companyId: number) =>
+  new Promise<string[]>((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = canvas.height = 64;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return resolve([]);
+      ctx.drawImage(img, 0, 0, 64, 64);
+      resolve(logoPalette(ctx.getImageData(0, 0, 64, 64).data));
+    };
+    img.onerror = () => resolve([]);
+    img.src = `/api/logos/${companyId}`;
+  });
 
 export const fetchLettre = (file: string) =>
   request<{ content: string; html: string }>(`/api/lettres/${encodeURIComponent(file)}`);

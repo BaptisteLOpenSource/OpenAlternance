@@ -1,5 +1,5 @@
-import { expect, test } from "bun:test";
-import { daysBetween, isoAgo } from "./logic";
+import { describe, expect, test } from "bun:test";
+import { daysBetween, isoAgo, logoPalette } from "./logic";
 import { TABLEUR_COLUMNS, missingFields, tableurRow, toTsv, type TableurCompany, addDays, delaiDays, documentFile, isoDate, isWebUrl, parseFrontmatter, relanceForStatut, replayEchanges, setFrontmatter, slug, stripFrontmatter, relanceAfter, statutAfter, weeklyCounts } from "./logic";
 import { NOM_FICHIER_DEFAUT, PROFIL_VIDE, contactWrite, fileName, fillProfil } from "./logic";
 
@@ -253,4 +253,26 @@ test("daysBetween", () => {
   expect(daysBetween("2026-10-25", "2026-10-30")).toBe(5);
   expect(daysBetween("2026-10-30", "2026-10-30")).toBe(0);
   expect(daysBetween("2026-03-28", "2026-03-30")).toBe(2);
+});
+
+describe("logoPalette", () => {
+  const px = (r: number, g: number, b: number, a = 255) => [r, g, b, a];
+  const pixels = (...list: number[][]) => new Uint8ClampedArray(list.flat());
+
+  test("ignore les pixels transparents, garde les couleurs opaques par fréquence", () => {
+    const data = pixels(px(255, 0, 0), px(255, 0, 0), px(0, 0, 255), px(0, 255, 0, 0));
+    expect(logoPalette(data)).toEqual(["#ff0000", "#0000ff"]);
+  });
+
+  test("alpha ignoré au-dessus du seuil: semi-transparent compte comme opaque", () => {
+    expect(logoPalette(pixels(px(255, 0, 0, 130)))).toEqual(["#ff0000"]);
+  });
+
+  test("blanc seul conservé (repli quand rien d'autre)", () => {
+    expect(logoPalette(pixels(px(255, 255, 255)))).toEqual(["#ffffff"]);
+  });
+
+  test("entrée vide -> []", () => {
+    expect(logoPalette(new Uint8ClampedArray())).toEqual([]);
+  });
 });

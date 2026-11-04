@@ -346,6 +346,24 @@ describe("base de test (TEST_DATABASE_URL)", () => {
     expect(res.status).toBe(400);
   });
 
+  test("logo: adresse interne refusée (SSRF), fiche non enregistrée", async () => {
+    await auth("/api/entreprise", { method: "POST", body: JSON.stringify({ nom: "TEST-ssrf" }) });
+    const res = await auth("/api/fiche", { method: "POST", body: JSON.stringify({ entreprise: "TEST-ssrf", logo: "http://127.0.0.1:9/x.png" }) });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toMatch(/interne/);
+    const state = (await (await auth("/api/state")).json()) as { companies: { nom: string; logo: string | null }[] };
+    expect(state.companies.find((c) => c.nom === "TEST-ssrf")?.logo).toBeNull();
+  });
+
+  test("logo stocké: servi par son type sniffé, même origine", async () => {
+    await repo.writeFichier("logo-999999", new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+    const res = await auth("/api/logos/999999");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("image/png");
+    await sql`DELETE FROM fichiers WHERE name = 'logo-999999'`;
+    expect((await auth("/api/logos/../etc")).status).toBe(404);
+  });
+
   test("document-texte: PDF absent -> 400", async () => {
     const res = await auth("/api/document-texte", { method: "POST", body: JSON.stringify({ name: "absent.pdf" }) });
     expect(res.status).toBe(400);

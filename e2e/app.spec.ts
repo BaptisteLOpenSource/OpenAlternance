@@ -55,6 +55,13 @@ async function mockApi(page: Page, mock: Mock) {
     if (path === "/api/mgdis.md" || path.startsWith("/api/lettres/")) {
       return json({ content: "# Bonjour", html: "<h1>Bonjour</h1>" });
     }
+    if (path === "/api/logos/1") {
+      return route.fulfill({
+        status: 200,
+        contentType: "image/svg+xml",
+        body: '<svg xmlns="http://www.w3.org/2000/svg" width="2" height="1"><rect width="1" height="1" fill="#ff0000"/><rect x="1" width="1" height="1" fill="#0000ff"/></svg>',
+      });
+    }
     if (req.method() === "POST") return json(state());
     return json({ error: "Introuvable" }, 404);
   });
@@ -127,6 +134,16 @@ test("impression de la lettre: nom du PDF = nom de fichier du profil", async ({ 
   await page.goto("/#/lettres/mgdis.md");
   await page.getByRole("button", { name: "Imprimer" }).click();
   await expect(page).toHaveTitle("Lettre_Motivation_BaptisteDechamp-MGDIS");
+});
+
+test("entreprise: dégradé pris dans les couleurs du logo, logo jamais en fond", async ({ page }) => {
+  const mock: Mock = { loggedIn: true, calls: [], extra: { companies: [{ ...company, logo: "https://mgdis.example/logo.svg" }] } };
+  await mockApi(page, mock);
+  await page.goto("/#/entreprises/1");
+  const colorOf = () => page.evaluate(() => [...document.querySelectorAll<HTMLElement>("*")].some((el) => getComputedStyle(el).backgroundColor === "rgb(255, 0, 0)"));
+  await expect.poll(colorOf).toBe(true);
+  const logoAsBackground = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>("*")].some((el) => getComputedStyle(el).backgroundImage.includes("/api/logos/")));
+  expect(logoAsBackground).toBe(false);
 });
 
 test("XSS: les notes d'entreprise sont affichées en texte, aucun script exécuté", async ({ page }) => {

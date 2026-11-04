@@ -1,9 +1,10 @@
-import { useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import { CLOSING_STATUTS, TYPES } from "../logic";
+import type { Agence } from "../repo";
 import { createLettre, lettreOf } from "./commands";
 import { ProfilForm } from "./profil";
-import { type DialogState, ECHANGE, EchangeBadge, type Send, formFields } from "./shared";
-import type { Action, AppState } from "./store";
+import { CONTRAT_OPTIONS, type DialogState, ECHANGE, EchangeBadge, type Send, formFields } from "./shared";
+import type { Action, AppState, PosteEtat } from "./store";
 import { Select } from "./menus";
 import { Button, Dialog, Input, Label, Textarea } from "./ui";
 
@@ -18,6 +19,10 @@ const TITLES: Record<Kind, string> = {
   lettre: "Nouvelle lettre de motivation",
   document: "Nouveau document",
   profil: "Mon profil et lettres",
+  poste: "Nouveau poste",
+  "modifier-poste": "Modifier le poste",
+  agence: "Nouvelle agence",
+  fusion: "Fusionner avec une autre entreprise",
 };
 
 const ACTION: Partial<Record<Kind, Action>> = {
@@ -26,6 +31,10 @@ const ACTION: Partial<Record<Kind, Action>> = {
   echange: "echange",
   "modifier-personne": "personne-modifier",
   "modifier-echange": "echange-modifier",
+  poste: "poste",
+  "modifier-poste": "poste-modifier",
+  agence: "agence",
+  fusion: "entreprise-fusionner",
 };
 
 export const MAX_PDF_BYTES = 3_000_000;
@@ -47,7 +56,7 @@ function LettreForm({ state, send, company, onClose }: { state: AppState; send: 
     // never overwrite: an existing letter is opened instead
     const existing = lettreOf(target, state);
     if (existing) location.hash = `#/lettres/${encodeURIComponent(existing.file)}`;
-    else if (!(await createLettre(target, send, state.profil))) return;
+    else if (!(await createLettre(target, send, state))) return;
     onClose();
   };
   return (
@@ -76,7 +85,7 @@ function DocumentForm({ send, onClose }: { send: Send; onClose: () => void }) {
     e.preventDefault();
     const form = new FormData(e.currentTarget as HTMLFormElement);
     const titre = String(form.get("titre") ?? "").trim();
-    let ok: boolean;
+    let ok: boolean | string;
     if (format === "pdf") {
       const file = form.get("pdf");
       if (!(file instanceof File) || file.size === 0) return setError("Choisissez un fichier PDF");
@@ -129,16 +138,26 @@ export function ActionDialog({ dialog, state, send, onClose }: { dialog: DialogS
   const kind = dialog?.kind;
   const contact = state.contacts.find((c) => c.id === dialog?.id);
   const echange = state.interactions.find((i) => i.id === dialog?.id);
+  const poste = state.postes.find((p) => p.id === dialog?.id);
+  // Échange form: the company picked in the form decides which postes are offered.
+  const [entreprise, setEntreprise] = useState(dialog?.company);
+  useEffect(() => setEntreprise(dialog?.company), [dialog]);
+  const idOf = (nom?: string) => state.companies.find((c) => c.nom === nom)?.id;
+  const postesDe = (nom?: string) => state.postes.filter((p) => p.company_id === idOf(nom));
+  const agencesDe = (nom?: string) => state.agences.filter((a) => a.company_id === idOf(nom));
   const submit = async (e: SubmitEvent) => {
     e.preventDefault();
     const action = kind && ACTION[kind];
     if (!action) return;
     const fields = formFields(e.currentTarget as HTMLFormElement);
-    if (await send(action, fields)) onClose();
+    if (await send(action, fields)) {
+      if (kind === "fusion") location.hash = "#/entreprises";
+      onClose();
+    }
   };
   const companySelect = (
     <Label label="Entreprise">
-      <Select name="entreprise" value={dialog?.company} options={state.companies.map((c) => c.nom)} />
+      <Select name="entreprise" value={entreprise} onChange={setEntreprise} options={state.companies.map((c) => c.nom)} />
     </Label>
   );
   const ownForm = () => {
@@ -172,6 +191,39 @@ export function ActionDialog({ dialog, state, send, onClose }: { dialog: DialogS
               <ContactFields contact={contact} />
             </>
           )}
+          {kind === "poste" && (
+            <>
+              <input type="hidden" name="entreprise" value={dialog?.company} />
+              <PosteFields agences={agencesDe(dialog?.company)} />
+            </>
+          )}
+          {kind === "modifier-poste" && poste && (
+            <>
+              <input type="hidden" name="id" value={poste.id} />
+              <PosteFields poste={poste} agences={agencesDe(dialog?.company)} />
+            </>
+          )}
+          {kind === "agence" && (
+            <>
+              <input type="hidden" name="entreprise" value={dialog?.company} />
+              <Label label="Ville"><Input name="ville" required autofocus /></Label>
+              <div class="grid gap-4 sm:grid-cols-2">
+                <Label label="Adresse"><Input name="adresse" /></Label>
+                <Label label="Code postal"><Input name="code_postal" /></Label>
+              </div>
+            </>
+          )}
+          {kind === "fusion" && (
+            <>
+              <input type="hidden" name="source" value={dialog?.company} />
+              <Label label="Cible">
+                <Select name="cible" options={state.companies.filter((c) => c.nom !== dialog?.company).map((c) => c.nom)} />
+              </Label>
+              <p class="text-sm text-muted-foreground">
+                Contacts, échanges, postes et lettres de {dialog?.company} passent dans la cible. Son siège devient une agence. La fiche {dialog?.company} est supprimée.
+              </p>
+            </>
+          )}
           {kind === "echange" && (
             <>
               {companySelect}
@@ -182,6 +234,7 @@ export function ActionDialog({ dialog, state, send, onClose }: { dialog: DialogS
                 <Label label="Date"><Input name="date" type="date" value={state.today} /></Label>
                 <Label label="Relance (j, vide = aucune)"><Input name="delai" type="number" min={1} value={7} /></Label>
               </div>
+              <PosteSelect postes={postesDe(entreprise)} />
               <Label label="Note"><Textarea name="note" autofocus /></Label>
             </>
           )}
@@ -195,6 +248,7 @@ export function ActionDialog({ dialog, state, send, onClose }: { dialog: DialogS
                 <Label label="Date"><Input name="date" type="date" value={echange.date} /></Label>
                 <Label label="Relance (j, vide = aucune)"><Input name="delai" type="number" min={1} value={echange.delai ?? ""} /></Label>
               </div>
+              <PosteSelect postes={postesDe(dialog?.company)} value={String(echange.poste_id ?? "")} />
               <Label label="Note"><Textarea name="note" value={echange.note ?? ""} /></Label>
             </>
           )}
@@ -205,6 +259,33 @@ export function ActionDialog({ dialog, state, send, onClose }: { dialog: DialogS
         </form>
       )}
     </Dialog>
+  );
+}
+
+// Full replace on the API side: every field is sent, even unchanged ones.
+function PosteFields({ poste, agences }: { poste?: PosteEtat; agences: Agence[] }) {
+  return (
+    <>
+      <Label label="Intitulé"><Input name="intitule" required autofocus value={poste?.intitule} /></Label>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <Label label="Contrat">
+          <Select name="contrat" value={poste?.contrat ?? "alternance"} options={CONTRAT_OPTIONS} />
+        </Label>
+        <Label label="Agence">
+          <Select name="agence" value={String(poste?.agence_id ?? "")} options={[{ value: "", label: "Siège" }, ...agences.map((a) => ({ value: String(a.id), label: a.ville }))]} />
+        </Label>
+      </div>
+      <Label label="Annonce"><Input name="annonce" type="url" placeholder="https://" value={poste?.annonce ?? undefined} /></Label>
+      <Label label="Publication"><Input name="publication" placeholder="Ex. il y a 1 semaine" value={poste?.publication ?? undefined} /></Label>
+    </>
+  );
+}
+
+function PosteSelect({ postes, value }: { postes: PosteEtat[]; value?: string }) {
+  return (
+    <Label label="Poste">
+      <Select name="poste" value={value ?? ""} options={[{ value: "", label: "Spontanée" }, ...postes.map((p) => ({ value: String(p.id), label: p.intitule }))]} />
+    </Label>
   );
 }
 

@@ -1,4 +1,4 @@
-import { type Profil, fillProfil, slug } from "../logic";
+import { fillProfil } from "../logic";
 import type { CompanyRow, Lettre, Poste } from "../repo";
 import { type Open, type Send, relanceEnvoyee } from "./shared";
 import { type AppState, fetchLettre } from "./store";
@@ -30,32 +30,31 @@ export const lettreOf = (company: CompanyRow, state: AppState, posteId?: number)
   );
 
 export const deleteLettre = async (lettre: Lettre, send: Send): Promise<boolean> =>
-  confirm(`Supprimer la lettre de ${lettre.entreprise || lettre.file} ?`) && (await send("lettre-supprimer", { file: lettre.file }));
+  confirm(`Supprimer la lettre de ${lettre.entreprise || lettre.file} ?`) && (await send("lettre-supprimer", { file: lettre.file })) !== false;
 
-export async function openLettre(company: CompanyRow, lettre: Lettre | null | undefined, send: Send, profil: Profil) {
+export async function openLettre(company: CompanyRow, lettre: Lettre | null | undefined, send: Send, state: AppState, poste?: Poste) {
   if (lettre) location.hash = `#/lettres/${encodeURIComponent(lettre.file)}`;
-  else await createLettre(company, send, profil);
+  else await createLettre(company, send, state, poste);
 }
 
-export async function createLettre(company: CompanyRow, send: Send, profil: Profil, poste?: Poste): Promise<string | null> {
+export async function createLettre(company: CompanyRow, send: Send, state: AppState, poste?: Poste): Promise<string | null> {
   const { content } = await fetchLettre("_template.md");
+  const ville = state.agences.find((a) => a.id === poste?.agence_id)?.ville ?? company.ville;
   const draft = fillProfil(
     content
       .replace("type: template-lettre", `type: lettre
 entreprise: ${company.nom}
 ${poste ? `poste: ${poste.id}\n` : ""}statut: brouillon`)
       .replaceAll("{{entreprise}}", company.nom)
-      .replaceAll("{{ville}}", company.ville || "{{ville}}")
+      .replaceAll("{{ville}}", ville || "{{ville}}")
       .replaceAll("{{poste}}", poste?.intitule || company.poste || "{{poste}}")
       .replaceAll("{{contrat}}", poste?.contrat ?? "alternance")
       .replaceAll("{{date}}", new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })),
-    profil,
+    state.profil,
   );
-  // same name as repo.writeLettre gives a new letter (a taken name gets `-<poste id>` server side)
-  const file = poste ? `${slug(company.nom)}-${slug(poste.intitule)}.md` : `${slug(company.nom)}.md`;
-  const target: Record<string, string> = poste ? { poste: String(poste.id) } : {};
-  if (!(await send("lettre", { entreprise: company.nom, content: draft.trimEnd(), ...target }))) return null;
-  location.hash = `#/lettres/${file}`;
+  const file = await send("lettre", { entreprise: company.nom, content: draft.trimEnd(), ...(poste ? { poste: String(poste.id) } : {}) });
+  if (typeof file !== "string") return null;
+  location.hash = `#/lettres/${encodeURIComponent(file)}`;
   return file;
 }
 
@@ -90,8 +89,9 @@ export const COMMANDS: Command[] = [
     id: "lettre",
     label: "Lettre de motivation",
     scope: ["company"],
-    run: ({ send, company, lettre, state }) => company && openLettre(company, lettre, send, state.profil),
+    run: ({ send, company, lettre, state }) => company && openLettre(company, lettre, send, state),
   },
+  { id: "fusionner", label: "Fusionner avec une autre entreprise", scope: ["company"], run: ({ open, company }) => company && open({ kind: "fusion", company: company.nom }) },
   {
     id: "lettre-statut",
     label: "Basculer brouillon / envoyée",

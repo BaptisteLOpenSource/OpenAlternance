@@ -22,11 +22,29 @@ const company = {
   contacts: [],
 };
 
+const grizzlead = { ...company, id: 2, nom: "Grizzlead", ville: "Auray", contacts: [] };
+
+const postes = [
+  { id: 1, company_id: 1, intitule: "Dev web", contrat: "alternance", annonce: null, publication: null, candidatures: null, reponses: null, agence_id: null, etat: { statut: "entretien", prochaine: null } },
+  { id: 2, company_id: 1, intitule: "Data", contrat: "cdi", annonce: "https://mgdis.example/data", publication: null, candidatures: null, reponses: null, agence_id: 1, etat: { statut: "a_contacter", prochaine: null } },
+];
+
+const agences = [{ id: 1, company_id: 1, ville: "Auray", adresse: null, code_postal: null }];
+
+const echanges = [
+  { id: 10, company_id: 1, type: "candidature", date: "2026-10-01", note: null, delai: 7, poste_id: 1, statut: null, prochaine: null, nom: "MGDIS" },
+  { id: 11, company_id: 1, type: "mail", date: "2026-10-02", note: null, delai: null, poste_id: 2, statut: null, prochaine: null, nom: "MGDIS" },
+  { id: 12, company_id: 1, type: "statut", date: "2026-10-03", note: null, delai: null, poste_id: null, statut: "entretien", prochaine: null, nom: "MGDIS" },
+  { id: 13, company_id: 1, type: "planif", date: "2026-10-04", note: null, delai: null, poste_id: null, statut: null, prochaine: null, nom: "MGDIS" },
+];
+
 const state = (lettres: unknown[] = [], extra: Record<string, unknown> = {}) => ({
   today: "2026-10-13",
-  companies: [company],
+  companies: [company, grizzlead],
   contacts: [],
-  interactions: [],
+  postes,
+  agences,
+  interactions: echanges,
   lettres,
   pdfs: ["lettre-mgdis.pdf"],
   documents: [],
@@ -52,6 +70,7 @@ async function mockApi(page: Page, mock: Mock) {
     }
     if (!mock.loggedIn) return json({ error: "Connexion requise" }, 401);
     if (path === "/api/state") return json(state([{ file: "mgdis.md", type: "lettre", entreprise: "MGDIS", statut: "brouillon" }], mock.extra));
+    if (path === "/api/lettre") return json({ ...state(), file: "mgdis-data.md" });
     if (path === "/api/mgdis.md" || path.startsWith("/api/lettres/")) {
       return json({ content: "# Bonjour", html: "<h1>Bonjour</h1>" });
     }
@@ -62,7 +81,7 @@ async function mockApi(page: Page, mock: Mock) {
         body: '<svg xmlns="http://www.w3.org/2000/svg" width="2" height="1"><rect width="1" height="1" fill="#ff0000"/><rect x="1" width="1" height="1" fill="#0000ff"/></svg>',
       });
     }
-    if (req.method() === "POST") return json(state());
+    if (req.method() === "POST") return json(state([], mock.extra));
     return json({ error: "Introuvable" }, 404);
   });
 }
@@ -189,4 +208,105 @@ test("API: une réponse non JSON ne casse pas l'UI (message lisible)", async ({ 
   );
   await page.goto("/");
   await expect(page.getByText("réponse non JSON")).toBeVisible();
+});
+
+test("postes: intitulés, contrats et agence affichés sur la fiche entreprise", async ({ page }) => {
+  const mock: Mock = { loggedIn: true, calls: [] };
+  await mockApi(page, mock);
+  await page.goto("/#/entreprises/1");
+  await expect(page.getByText("Dev web", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Data", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("CDI", { exact: true })).toBeVisible();
+  await expect(page.getByText("Auray", { exact: true }).first()).toBeVisible();
+});
+
+test("poste: ajout via le dialogue -> POST /api/poste", async ({ page }) => {
+  const mock: Mock = { loggedIn: true, calls: [] };
+  await mockApi(page, mock);
+  await page.goto("/#/entreprises/1");
+  await page.getByRole("button", { name: "Ajouter un poste" }).click();
+  await page.getByLabel("Intitulé").fill("Ops");
+  await page.getByLabel("Contrat").click();
+  await page.getByRole("option", { name: "Stage" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Enregistrer" }).click();
+  await expect.poll(() => mock.calls.find((c) => c.path === "/api/poste")?.body).toMatchObject({ entreprise: "MGDIS", intitule: "Ops", contrat: "stage" });
+});
+
+test("poste: modifier renvoie tous les champs (contrat, agence, annonce)", async ({ page }) => {
+  const mock: Mock = { loggedIn: true, calls: [] };
+  await mockApi(page, mock);
+  await page.goto("/#/entreprises/1");
+  await page.getByRole("button", { name: "Modifier le poste Data" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Enregistrer" }).click();
+  await expect
+    .poll(() => mock.calls.find((c) => c.path === "/api/poste-modifier")?.body)
+    .toMatchObject({ id: "2", intitule: "Data", contrat: "cdi", agence: "1", annonce: "https://mgdis.example/data" });
+});
+
+test("historique: filtre par poste masque les autres échanges", async ({ page }) => {
+  const mock: Mock = { loggedIn: true, calls: [] };
+  await mockApi(page, mock);
+  await page.goto("/#/entreprises/1");
+  await expect(page.getByText("Email", { exact: true })).toBeVisible();
+  await page.getByLabel("Filtrer l'historique par poste").click();
+  await page.getByRole("option", { name: "Dev web" }).click();
+  await expect(page.getByText("Email", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Candidature", { exact: true })).toBeVisible();
+});
+
+test("historique: événements statut et planif lisibles", async ({ page }) => {
+  const mock: Mock = { loggedIn: true, calls: [] };
+  await mockApi(page, mock);
+  await page.goto("/#/entreprises/1");
+  await expect(page.getByText("Statut → Entretien")).toBeVisible();
+  await expect(page.getByText("Relances arrêtées")).toBeVisible();
+});
+
+test("poste: StatutSelect envoie le poste", async ({ page }) => {
+  const mock: Mock = { loggedIn: true, calls: [] };
+  await mockApi(page, mock);
+  await page.goto("/#/entreprises/1");
+  await page.getByRole("button", { name: "Statut du poste Data" }).click();
+  await page.getByRole("option", { name: "Refusé" }).click();
+  await expect.poll(() => mock.calls.find((c) => c.path === "/api/statut")?.body).toEqual({ entreprise: "MGDIS", poste: "2", statut: "refuse" });
+});
+
+test("échange: type limité aux types d'échange (pas statut ni planif)", async ({ page }) => {
+  const mock: Mock = { loggedIn: true, calls: [] };
+  await mockApi(page, mock);
+  await page.goto("/#/entreprises/1");
+  await page.getByRole("button", { name: "Ajouter un échange" }).first().click();
+  await page.getByLabel("Type").click();
+  await expect(page.getByRole("option")).toHaveCount(9);
+  await expect(page.getByRole("option", { name: "statut" })).toHaveCount(0);
+});
+
+test("échange modifié: le poste est renvoyé même inchangé", async ({ page }) => {
+  const mock: Mock = { loggedIn: true, calls: [], extra: { interactions: [echanges[1]] } };
+  await mockApi(page, mock);
+  await page.goto("/#/entreprises/1");
+  await page.getByRole("button", { name: "Modifier l'échange" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Enregistrer" }).click();
+  await expect.poll(() => mock.calls.find((c) => c.path === "/api/echange-modifier")?.body).toMatchObject({ id: "11", poste: "2" });
+});
+
+test("lettre d'un poste: ouvre le fichier renvoyé par l'API", async ({ page }) => {
+  const mock: Mock = { loggedIn: true, calls: [] };
+  await mockApi(page, mock);
+  await page.goto("/#/entreprises/1");
+  await page.getByRole("button", { name: "Lettre du poste Data" }).click();
+  await expect.poll(() => mock.calls.find((c) => c.path === "/api/lettre")?.body).toMatchObject({ entreprise: "MGDIS", poste: "2" });
+  await expect.poll(() => page.evaluate(() => location.hash)).toBe("#/lettres/mgdis-data.md");
+});
+
+test("fusion: dialogue -> POST /api/entreprise-fusionner {source, cible}", async ({ page }) => {
+  const mock: Mock = { loggedIn: true, calls: [] };
+  await mockApi(page, mock);
+  await page.goto("/#/entreprises/1");
+  await page.locator("h1").click({ button: "right" });
+  await page.getByText("Fusionner avec une autre entreprise", { exact: true }).click();
+  await page.getByLabel("Cible").click();
+  await page.getByRole("option", { name: "Grizzlead" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Enregistrer" }).click();
+  await expect.poll(() => mock.calls.find((c) => c.path === "/api/entreprise-fusionner")?.body).toEqual({ source: "MGDIS", cible: "Grizzlead" });
 });

@@ -284,8 +284,10 @@ async function handlePost(req: Request, path: string): Promise<Response> {
       if (!value) throw new Error(`champ requis: ${name}`);
       return value;
     };
-    await ACTIONS[name](required, optional, fields);
-    return json(await state());
+    const created = await ACTIONS[name](required, optional, fields);
+    const next = await state();
+    // Only lettre creation returns a file name: the client opens it (server suffixes it on collision).
+    return json(typeof created === "string" ? { ...next, file: created } : next);
   } catch (error) {
     return json({ error: error instanceof Error ? error.message : String(error) }, 400);
   }

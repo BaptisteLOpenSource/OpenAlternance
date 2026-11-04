@@ -5,6 +5,7 @@ import type { CompanyRow } from "../repo";
 import { type Open, RelanceBadge, type Send, StatutFilter, StatutSelect, shortDate } from "./shared";
 import type { AppState } from "./store";
 import {
+  Badge,
   Button,
   Card,
   CardAction,
@@ -119,6 +120,8 @@ export function CompaniesPage({
             )}
             {rows.map((c) => {
               const contacts = c.contacts.join(", ") || "-";
+              const villes = state.agences.filter((a) => a.company_id === c.id).map((a) => a.ville);
+              const nbPostes = state.postes.filter((p) => p.company_id === c.id).length;
               return (
                 <TableRow key={c.id} data-company={String(c.id)} class="cursor-pointer" onClick={() => openCompany(c.id)}>
                   <TableCell class="sticky left-0 z-10 bg-card py-3">
@@ -128,7 +131,8 @@ export function CompaniesPage({
                     >
                       {c.nom}
                     </a>
-                    {c.ville && <p class="text-xs text-muted-foreground">{c.ville}</p>}
+                    {nbPostes > 0 && <Badge variant="outline" class="mt-1">{nbPostes} poste{nbPostes > 1 ? "s" : ""}</Badge>}
+                    {(c.ville || villes.length > 0) && <p class="text-xs text-muted-foreground">{[c.ville, ...villes].filter(Boolean).join(" · ")}</p>}
                   </TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()}>
                     <StatutSelect company={c} send={send} />

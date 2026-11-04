@@ -12,6 +12,16 @@
 
 Sens des dépendances : web -> api -> repo -> db ; `logic.ts` ne dépend de rien.
 
+## Agrégat Entreprise
+
+`companies` est la racine. Ses enfants `postes` et `agences` sont supprimés avec elle (`ON DELETE CASCADE`).
+`interactions.poste_id` est nullable : null = piste spontanée.
+
+L'historique (`interactions`) est la seule source des états. Chaque changement manuel de statut ou de relance
+est un événement (`statut`, `planif`). `companies.statut` et `prochaine_relance` sont un cache recalculé
+par `replayCompany` (`src/repo.ts`) via `replayTracks` (`src/logic.ts`) : une piste par poste, plus la spontanée.
+L'état d'un poste est attaché par l'API dans `/api/state`. Le statut de l'entreprise est l'agrégat des pistes.
+
 ## Deux bases, un code
 
 `DATABASE_URL` choisit l'adaptateur (`resolveDb` dans `src/db.ts`) : `postgres://` ou `postgresql://`

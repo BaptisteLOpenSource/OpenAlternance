@@ -1,13 +1,13 @@
-import { ArrowLeft, Briefcase, Building2, CalendarDays, ExternalLink, FileCheck, FileText, Globe, Image as ImageIcon, Mail, MapPin, Mailbox, MessageSquare, Newspaper, Pencil, Phone, Plus, Send as SendIcon, Star, Tag, Trash2, UserPlus, Users } from "lucide-preact";
+import { ArrowLeft, Building2, ExternalLink, FileCheck, FileText, Globe, Image as ImageIcon, Mail, MapPin, Mailbox, Newspaper, Pencil, Phone, Plus, Star, Tag, Trash2, UserPlus, Users } from "lucide-preact";
 import type { ComponentChildren } from "preact";
 import { useEffect, useState } from "preact/hooks";
-import { CLOSING_STATUTS, FICHE_TEXTES, MAIL_CANAUX, SUIVIS, isWebUrl } from "../logic";
-import type { CompanyRow, Lettre } from "../repo";
+import { CLOSING_STATUTS, FICHE_TEXTES, MAIL_CANAUX, SUIVIS, SUIVI_TYPES, isWebUrl } from "../logic";
+import type { CompanyRow, Interaction, Lettre } from "../repo";
 import { deleteLettre, lettreOf, openLettre } from "./commands";
 import { Select } from "./menus";
-import { CopyButton, DeleteEchange, EchangeBadge, LettreStatutControl, dotOf, type Open, RelanceBadge, ficheOf, RelanceControls, STATUT, type Send, StatutSelect, isOpen, sendFiche, shortDate } from "./shared";
+import { CONTRAT_LABEL, CopyButton, DeleteEchange, EchangeBadge, LettreStatutControl, dotOf, type Open, RelanceBadge, ficheOf, RelanceControls, STATUT, type Send, StatutSelect, isOpen, sendFiche, shortDate } from "./shared";
 import { type AppState, fetchLettre } from "./store";
-import { Button, Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle, cn } from "./ui";
+import { Badge, Button, Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle, cn } from "./ui";
 
 const bare =
   "w-full min-w-0 rounded-md border border-border/60 bg-transparent px-2 py-1 text-base transition-[color,box-shadow] placeholder:text-muted-foreground hover:bg-muted/60 focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 md:text-sm";
@@ -45,6 +45,9 @@ const etat = (c: CompanyRow) =>
     : c.statut === "a_contacter"
       ? { label: "Pas commencé", dot: "bg-muted-foreground" }
       : { label: "En cours", dot: "bg-info" };
+
+const suiviLabel = (i: Interaction) =>
+  i.type === "statut" ? `Statut → ${STATUT[i.statut!].label}` : i.prochaine ? `Relance prévue le ${shortDate(i.prochaine)}` : "Relances arrêtées";
 
 function Fact({ label, class: className, children }: { label: string; class?: string; children: ComponentChildren }) {
   return (
@@ -84,7 +87,7 @@ function LettreEditor({ lettre, send }: { lettre: Lettre; send: Send }) {
   const dirty = saved !== null && draft !== saved;
   const save = async () => {
     if (!dirty) return true;
-    const ok = await send("lettre", { file, content: draft });
+    const ok = (await send("lettre", { file, content: draft })) !== false;
     if (ok) setSaved(draft);
     return ok;
   };
@@ -130,10 +133,16 @@ function LettreEditor({ lettre, send }: { lettre: Lettre; send: Send }) {
 }
 
 export function CompanyPage({ state, id, send, onOpen }: { state: AppState; id: number; send: Send; onOpen: Open }) {
+  const [filtre, setFiltre] = useState("");
   const company = state.companies.find((c) => c.id === id);
   if (!company) return <p class="text-sm text-muted-foreground">Entreprise introuvable.</p>;
   const contacts = state.contacts.filter((k) => k.company_id === id);
   const history = state.interactions.filter((i) => i.company_id === id);
+  const postes = state.postes.filter((p) => p.company_id === id);
+  const agences = state.agences.filter((a) => a.company_id === id);
+  const visibles = filtre === "" ? history : history.filter((i) => (filtre === "spontanee" ? i.poste_id === null : i.poste_id === Number(filtre)));
+  const agenceVille = (agenceId: number | null) => agences.find((a) => a.id === agenceId)?.ville ?? company.ville ?? "Siège";
+  const estSuivi = (type: string) => (SUIVI_TYPES as readonly string[]).includes(type);
   const status = etat(company);
   const lettre = lettreOf(company, state);
   const cover =
@@ -170,7 +179,7 @@ export function CompanyPage({ state, id, send, onOpen }: { state: AppState; id: 
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => void openLettre(company, lettre, send, state.profil)}
+                onClick={() => void openLettre(company, lettre, send, state)}
               >
                 <FileText />
                 {lettre ? "Voir la lettre" : "Lettre de motivation"}
@@ -213,6 +222,64 @@ export function CompanyPage({ state, id, send, onOpen }: { state: AppState; id: 
       <div class="grid grid-cols-1 gap-4 md:gap-6 lg:grid-cols-3">
         <div class="grid content-start gap-4 md:gap-6 lg:col-span-2">
           {lettre && <LettreEditor key={`${lettre.file}-${lettre.statut}-${lettre.date_envoi}`} lettre={lettre} send={send} />}
+          <Card>
+            <CardHeader>
+              <CardTitle class="text-base">Postes</CardTitle>
+              <CardAction>
+                <Button variant="ghost" size="icon-sm" aria-label="Ajouter un poste" onClick={() => onOpen({ kind: "poste", company: company.nom })}>
+                  <Plus />
+                </Button>
+              </CardAction>
+            </CardHeader>
+            <CardContent class="grid gap-3 text-sm">
+              {postes.length === 0 && <p class="text-muted-foreground">Aucun poste.</p>}
+              {postes.map((poste) => (
+                <div key={poste.id} class="grid gap-2 rounded-lg border border-border/20 bg-background/40 p-3">
+                  <div class="flex flex-wrap items-start justify-between gap-2">
+                    <div class="grid gap-1">
+                      <p class="font-medium">{poste.intitule}</p>
+                      <div class="flex flex-wrap items-center gap-2 text-muted-foreground">
+                        <Badge variant="outline">{CONTRAT_LABEL[poste.contrat]}</Badge>
+                        <span>{agenceVille(poste.agence_id)}</span>
+                        {poste.annonce && isWebUrl(poste.annonce) && (
+                          <a href={poste.annonce} target="_blank" rel="noreferrer" class="inline-flex items-center gap-1 hover:text-foreground">
+                            Annonce
+                            <ExternalLink class="size-3.5" />
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                    <div class="flex shrink-0 items-center gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        aria-label={`Lettre du poste ${poste.intitule}`}
+                        onClick={() => void openLettre(company, lettreOf(company, state, poste.id), send, state, poste)}
+                      >
+                        <FileText />
+                        Lettre
+                      </Button>
+                      <Button variant="ghost" size="icon-sm" aria-label={`Modifier le poste ${poste.intitule}`} onClick={() => onOpen({ kind: "modifier-poste", company: company.nom, id: poste.id })}>
+                        <Pencil />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`Supprimer le poste ${poste.intitule}`}
+                        onClick={() => confirm(`Supprimer le poste « ${poste.intitule} » ? Ses échanges restent, en spontanée.`) && send("poste-supprimer", { id: String(poste.id) })}
+                      >
+                        <Trash2 />
+                      </Button>
+                    </div>
+                  </div>
+                  <div class="flex flex-wrap items-center gap-2">
+                    <StatutSelect company={company} poste={poste} send={send} />
+                    {poste.etat.prochaine !== null && !CLOSING_STATUTS.has(poste.etat.statut) && <RelanceControls company={company} poste={poste} send={send} />}
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
           <Card>
             <CardHeader>
               <CardTitle class="text-base">Contacts</CardTitle>
@@ -292,6 +359,15 @@ export function CompanyPage({ state, id, send, onOpen }: { state: AppState; id: 
                   </Button>
                 </div>
               )}
+              {postes.length > 0 && (
+                <Select
+                  aria-label="Filtrer l'historique par poste"
+                  class="mb-3 w-auto"
+                  value={filtre}
+                  onChange={setFiltre}
+                  options={[{ value: "", label: "Tous les postes" }, { value: "spontanee", label: "Spontanée" }, ...postes.map((p) => ({ value: String(p.id), label: p.intitule }))]}
+                />
+              )}
               <ol class="grid gap-3 border-l pl-4">
                 {isOpen(company) && (
                   <li class="relative flex flex-wrap items-center justify-between gap-2">
@@ -303,20 +379,23 @@ export function CompanyPage({ state, id, send, onOpen }: { state: AppState; id: 
                     <RelanceControls company={company} send={send} />
                   </li>
                 )}
-                {[...history].reverse().map((i) => (
+                {[...visibles].reverse().map((i) => (
                   <li class="relative flex items-start justify-between gap-2">
                     <span aria-hidden="true" class="absolute -left-[1.3rem] top-1.5 size-2 rounded-full bg-primary" />
                     <div>
                       <p>
-                        <EchangeBadge type={i.type} />{" "}
+                        {estSuivi(i.type) ? <span class="font-medium">{suiviLabel(i)}</span> : <EchangeBadge type={i.type} />}{" "}
                         <span class="tabular-nums text-muted-foreground">{shortDate(i.date)}</span>
+                        {i.poste_id !== null && <Badge variant="outline" class="ml-2">{postes.find((p) => p.id === i.poste_id)?.intitule}</Badge>}
                       </p>
                       {i.note && <p class="text-muted-foreground">{i.note}</p>}
                     </div>
                     <div class="flex shrink-0">
-                      <Button variant="ghost" size="icon-sm" aria-label="Modifier l'échange" onClick={() => onOpen({ kind: "modifier-echange", company: company.nom, id: i.id })}>
-                        <Pencil />
-                      </Button>
+                      {!estSuivi(i.type) && (
+                        <Button variant="ghost" size="icon-sm" aria-label="Modifier l'échange" onClick={() => onOpen({ kind: "modifier-echange", company: company.nom, id: i.id })}>
+                          <Pencil />
+                        </Button>
+                      )}
                       <DeleteEchange echange={i} send={send} />
                     </div>
                   </li>
@@ -379,6 +458,38 @@ export function CompanyPage({ state, id, send, onOpen }: { state: AppState; id: 
         <div class="grid content-start gap-4 md:gap-6">
           <Card>
             <CardHeader>
+              <CardTitle class="text-base">Agences</CardTitle>
+              <CardAction>
+                <Button variant="ghost" size="icon-sm" aria-label="Ajouter une agence" onClick={() => onOpen({ kind: "agence", company: company.nom })}>
+                  <Plus />
+                </Button>
+              </CardAction>
+            </CardHeader>
+            <CardContent class="grid gap-3 text-sm">
+              <p>
+                <span class="font-medium">Siège</span> <span class="text-muted-foreground">{company.ville || "Vide"}</span>
+              </p>
+              {agences.map((agence) => (
+                <div key={agence.id} class="flex items-start justify-between gap-2">
+                  <div>
+                    <p class="font-medium">{agence.ville}</p>
+                    {agence.adresse && <p class="text-muted-foreground">{agence.adresse}</p>}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`Supprimer l'agence ${agence.ville}`}
+                    onClick={() => confirm(`Supprimer l'agence « ${agence.ville} » ? Ses postes repassent au siège.`) && send("agence-supprimer", { id: String(agence.id) })}
+                  >
+                    <Trash2 />
+                  </Button>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
               <CardTitle class="text-base">Propriétés</CardTitle>
             </CardHeader>
             <CardContent class="grid gap-2">
@@ -410,18 +521,6 @@ export function CompanyPage({ state, id, send, onOpen }: { state: AppState; id: 
               </Prop>
               <Prop icon={ImageIcon} label="Logo">
                 <input class={bareInput} type="url" placeholder="https://" value={fiche.logo} onKeyDown={editKeys(fiche.logo)} onBlur={saveField("logo")} />
-              </Prop>
-              <Prop icon={Briefcase} label="Poste">
-                <input class={bareInput} placeholder="Vide" value={fiche.poste} onKeyDown={editKeys(fiche.poste)} onBlur={saveField("poste")} />
-              </Prop>
-              <Prop icon={CalendarDays} label="Publication">
-                <input class={bareInput} placeholder="Ex. il y a 1 semaine" value={fiche.publication} onKeyDown={editKeys(fiche.publication)} onBlur={saveField("publication")} />
-              </Prop>
-              <Prop icon={SendIcon} label="Candidatures">
-                <input class={bareInput} placeholder="Ex. plus de 100" value={fiche.candidatures} onKeyDown={editKeys(fiche.candidatures)} onBlur={saveField("candidatures")} />
-              </Prop>
-              <Prop icon={MessageSquare} label="Réponses">
-                <input class={bareInput} placeholder="Aucune info" value={fiche.reponses} onKeyDown={editKeys(fiche.reponses)} onBlur={saveField("reponses")} />
               </Prop>
             </CardContent>
           </Card>

@@ -1,8 +1,8 @@
 import { Ban, Check, CircleCheck, CircleDashed, CircleX, Copy, FileUp, Handshake, Hourglass, Mail, MessageSquare, Phone, Redo2, Send, Trash2, Trophy, UserX, X } from "lucide-preact";
 import { useState } from "preact/hooks";
-import { CLOSING_STATUTS, FICHE_EXTRA, type FicheExtra, LETTRE_STATUTS, type InteractionType, type LettreStatut, STATUTS, type Statut, TYPES, today } from "../logic";
+import { CLOSING_STATUTS, CONTRATS, type Contrat, FICHE_EXTRA, type FicheExtra, LETTRE_STATUTS, type InteractionType, type LettreStatut, STATUTS, type Statut, TYPES, today } from "../logic";
 import type { CompanyRow, Lettre } from "../repo";
-import type { Action } from "./store";
+import type { Action, PosteEtat } from "./store";
 import { Select } from "./menus";
 import { ToggleGroup, useToast } from "./fx";
 import { Badge, type BadgeVariant, Button, Dialog, Input } from "./ui";
@@ -72,6 +72,8 @@ export const ECHANGE: Record<(typeof TYPES)[number], Tag> = {
   reponse_defavorable: { label: "Réponse défavorable", variant: "destructive", icon: CircleX },
   depot: { label: "CV déposé", variant: "info", icon: FileUp },
 };
+export const CONTRAT_LABEL: Record<Contrat, string> = { alternance: "Alternance", stage: "Stage", cdd: "CDD", cdi: "CDI", interim: "Intérim" };
+export const CONTRAT_OPTIONS = CONTRATS.map((c) => ({ value: c, label: CONTRAT_LABEL[c] }));
 export const echangeLabel = (type: string) => ECHANGE[type as (typeof TYPES)[number]]?.label ?? type;
 
 export const TagBadge = ({ tag, class: className }: { tag: Tag; class?: string }) => (
@@ -86,9 +88,10 @@ export const EchangeBadge = ({ type }: { type: string }) =>
 export const formFields = (form: HTMLFormElement) =>
   Object.fromEntries([...new FormData(form)].map(([k, v]) => [k, typeof v === "string" ? v : v.name]));
 
-export type Send = (action: Action, fields: Record<string, string>) => Promise<boolean>;
+// Resolves false on failure, true on success, or the created letter's file name.
+export type Send = (action: Action, fields: Record<string, string>) => Promise<boolean | string>;
 export type DialogState = {
-  kind: "entreprise" | "personne" | "echange" | "modifier-personne" | "modifier-echange" | "lettre" | "document" | "profil";
+  kind: "entreprise" | "personne" | "echange" | "modifier-personne" | "modifier-echange" | "lettre" | "document" | "profil" | "poste" | "modifier-poste" | "agence" | "fusion";
   company?: string;
   id?: number;
   type?: InteractionType;
@@ -122,7 +125,7 @@ const inFlight = new Map<string, Record<string, string>>();
 export async function sendFiche(send: Send, company: CompanyRow, changes: Record<string, string>): Promise<boolean> {
   const payload = { entreprise: company.nom, ...ficheOf(company), ...inFlight.get(company.nom), ...changes };
   inFlight.set(company.nom, payload);
-  const ok = await send("fiche", payload);
+  const ok = (await send("fiche", payload)) !== false;
   if (inFlight.get(company.nom) === payload) inFlight.delete(company.nom);
   return ok;
 }
@@ -168,20 +171,22 @@ export function RelanceBadge({ company, today }: { company: CompanyRow; today: s
 }
 
 // Relance prévue: décaler (date) ou annuler. Même contrôle sur fiche entreprise, historique et todo.
-export function RelanceControls({ company, send }: { company: CompanyRow; send: Send }) {
+export function RelanceControls({ company, send, poste }: { company: CompanyRow; send: Send; poste?: PosteEtat }) {
+  const target: Record<string, string> = poste ? { entreprise: company.nom, poste: String(poste.id) } : { entreprise: company.nom };
+  const label = poste ? `${company.nom} · ${poste.intitule}` : company.nom;
   return (
     <span class="inline-flex flex-wrap items-center gap-2">
       <Input
         type="date"
         class="w-auto text-sm sm:h-8"
-        aria-label={`Décaler la relance de ${company.nom}`}
-        value={company.prochaine_relance ?? ""}
-        onChange={(e) => e.currentTarget.value && send("relance-date", { entreprise: company.nom, date: e.currentTarget.value })}
+        aria-label={`Décaler la relance de ${label}`}
+        value={(poste ? poste.etat.prochaine : company.prochaine_relance) ?? ""}
+        onChange={(e) => e.currentTarget.value && send("relance-date", { ...target, date: e.currentTarget.value })}
       />
       <Button
         variant="ghost"
         size="sm"
-        onClick={() => confirm(`Annuler la relance de ${company.nom} ? Le statut est conservé.`) && send("sans-reponse", { entreprise: company.nom })}
+        onClick={() => confirm(`Annuler la relance de ${label} ? Le statut est conservé.`) && send("sans-reponse", target)}
       >
         <Ban />
         Annuler la relance
@@ -248,14 +253,15 @@ export function CopyButton({ value }: { value: string }) {
   );
 }
 
-export const StatutSelect = ({ company, send }: { company: CompanyRow; send: Send }) => (
+// Without poste: spontanée track (company header, lists). With poste: that poste's état.
+export const StatutSelect = ({ company, poste, send }: { company: CompanyRow; poste?: PosteEtat; send: Send }) => (
   <Select
-    value={company.statut}
-    aria-label={`Statut de ${company.nom}`}
+    value={poste ? poste.etat.statut : company.statut}
+    aria-label={poste ? `Statut du poste ${poste.intitule}` : `Statut de ${company.nom}`}
     options={STATUTS.map((s) => ({ value: s, label: STATUT[s].label }))}
     renderOption={(s) => <StatutBadge statut={s as Statut} />}
     renderValue={(s) => <StatutBadge statut={s as Statut} class="pr-1.5" />}
-    onChange={(statut) => send("statut", { entreprise: company.nom, statut })}
+    onChange={(statut) => send("statut", { entreprise: company.nom, statut, ...(poste ? { poste: String(poste.id) } : {}) })}
   />
 );
 

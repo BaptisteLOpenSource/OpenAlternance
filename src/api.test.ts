@@ -370,6 +370,22 @@ describe("base de test (TEST_DATABASE_URL)", () => {
     expect((await auth("/api/lettres/test-orph-suppr.md")).status).toBe(404);
   });
 
+  test("lettre d'un poste: réponse porte le fichier créé, suffixe -id si le nom est pris", async () => {
+    await auth("/api/entreprise", { method: "POST", body: JSON.stringify({ nom: "TEST-collision" }) });
+    const addDev = async () => {
+      await auth("/api/poste", { method: "POST", body: JSON.stringify({ entreprise: "TEST-collision", intitule: "Dev" }) });
+      const state = (await (await auth("/api/state")).json()) as { postes: { id: number; intitule: string }[] };
+      return Math.max(...state.postes.filter((p) => p.intitule === "Dev").map((p) => p.id));
+    };
+    const letter = (poste: number) =>
+      auth("/api/lettre", { method: "POST", body: JSON.stringify({ entreprise: "TEST-collision", poste: String(poste), content: "a" }) });
+    const first = await addDev();
+    expect(((await (await letter(first)).json()) as { file: string }).file).toBe("test-collision-dev.md");
+    await auth("/api/poste-supprimer", { method: "POST", body: JSON.stringify({ id: String(first) }) });
+    const second = await addDev();
+    expect(((await (await letter(second)).json()) as { file: string }).file).toBe(`test-collision-dev-${second}.md`);
+  });
+
   test("template de lettre: suppression refusée", async () => {
     const res = await auth("/api/lettre-supprimer", { method: "POST", body: JSON.stringify({ file: "_template.md" }) });
     expect(res.status).toBe(400);

@@ -494,9 +494,10 @@ const upsertLettre = (file: string, content: string) =>
   sql`INSERT INTO lettres (file, content) VALUES (${file}, ${`${content}\n`})
     ON CONFLICT (file) DO UPDATE SET content = EXCLUDED.content`;
 
-export async function writeLettre(companyNom: string, content: string, posteId?: number): Promise<void> {
+export async function writeLettre(companyNom: string, content: string, posteId?: number): Promise<string> {
   const file = await lettreFile(companyNom, posteId);
   await upsertLettre(file, posteId === undefined ? content : setFrontmatter(content, { poste: String(posteId) }));
+  return file;
 }
 
 export async function writeLettreFile(file: string, content: string): Promise<void> {

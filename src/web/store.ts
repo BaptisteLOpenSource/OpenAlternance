@@ -1,13 +1,17 @@
 import { useEffect, useState } from "preact/hooks";
-import { type Profil, logoPalette } from "../logic";
-import type { CompanyRow, Contact, DocumentRow, Interaction, Lettre, Poste } from "../repo";
+import { type Profil, type Statut, logoPalette } from "../logic";
+import type { Agence, CompanyRow, Contact, DocumentRow, Interaction, Lettre, Poste } from "../repo";
+
+// etat: this poste's track, replayed by the API from history (spontanée track is not sent).
+export type PosteEtat = Poste & { etat: { statut: Statut; prochaine: string | null } };
 
 export type AppState = {
   today: string;
   companies: CompanyRow[];
   contacts: Contact[];
   interactions: (Interaction & { nom: string })[];
-  postes: Poste[];
+  postes: PosteEtat[];
+  agences: Agence[];
   lettres: Lettre[];
   pdfs: string[];
   documents: DocumentRow[];
@@ -19,9 +23,16 @@ export type Action =
   | "entreprise"
   | "entreprise-supprimer"
   | "entreprise-renommer"
+  | "entreprise-fusionner"
   | "personne"
   | "personne-supprimer"
   | "personne-modifier"
+  | "poste"
+  | "poste-modifier"
+  | "poste-supprimer"
+  | "agence"
+  | "agence-modifier"
+  | "agence-supprimer"
   | "echange"
   | "echange-supprimer"
   | "echange-modifier"
@@ -52,8 +63,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return body;
 }
 
+// file: set only by lettre creation (the server may suffix the name on collision).
 const post = (path: string, fields: unknown) =>
-  request<AppState>(path, {
+  request<AppState & { file?: string }>(path, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(fields),
@@ -135,11 +147,12 @@ export function useStore() {
     return () => removeEventListener("focus", load);
   }, []);
 
-  async function send(action: Action, fields: Record<string, string>): Promise<boolean> {
+  async function send(action: Action, fields: Record<string, string>): Promise<boolean | string> {
     try {
-      setState(await post(`/api/${action}`, fields));
+      const next = await post(`/api/${action}`, fields);
+      setState(next);
       setError(null);
-      return true;
+      return next.file ?? true;
     } catch (e) {
       if (e instanceof Unauthorized) setLocked(true);
       else setError(e instanceof Error ? e.message : String(e));

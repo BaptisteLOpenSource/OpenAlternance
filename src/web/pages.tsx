@@ -230,7 +230,7 @@ function LettreView({ lettre, send, onTemplate, profil, onDirty }: { lettre: Let
             ))}
           </div>
           {dirty && <span role="status" class="text-xs text-warning">Non enregistré</span>}
-          {lettre.type === "lettre" && editable && <LettreStatutControl lettre={lettre} send={send} dirty={dirty} onSave={save} />}
+          {lettre.type === "lettre" && <LettreStatutControl lettre={lettre} send={send} dirty={dirty} onSave={save} />}
           {view === "md" && editable && (
             <Button size="sm" disabled={!dirty} onClick={save}>
               Enregistrer
@@ -242,7 +242,7 @@ function LettreView({ lettre, send, onTemplate, profil, onDirty }: { lettre: Let
               Template
             </Button>
           )}
-          {lettre.type === "lettre" && editable && (
+          {lettre.type === "lettre" && (
             <Button variant="ghost" size="icon-sm" aria-label="Supprimer la lettre" onClick={remove}>
               <Trash2 />
             </Button>

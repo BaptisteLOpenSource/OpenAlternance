@@ -599,6 +599,42 @@ describe("base de test (TEST_DATABASE_URL)", () => {
     await auth("/api/entreprise-supprimer", { method: "POST", body: JSON.stringify({ entreprise: "TEST-grizzlead-renomme" }) });
   });
 
+  test("fusion Grizzlead Rennes -> Auray", async () => {
+    const rennes = "TEST-grizzlead-rennes";
+    const auray = "TEST-grizzlead-auray";
+    const post = (path: string, body: object) => auth(path, { method: "POST", body: JSON.stringify(body) });
+    await post("/api/entreprise", { nom: rennes, ville: "Rennes" });
+    await post("/api/fiche", { entreprise: rennes, ville: "Rennes", adresse: "1 rue TEST", code_postal: "35000", notes: "siège Rennes" });
+    await post("/api/entreprise", { nom: auray, ville: "Auray", notes: "siège Auray" });
+    await post("/api/personne", { entreprise: rennes, nom: "TEST-contact-rennes" });
+    await post("/api/poste", { entreprise: rennes, intitule: "TEST-poste-rennes" });
+    const posteRennes = await posteDe(rennes);
+    await post("/api/echange", { entreprise: rennes, type: "mail", poste: String(posteRennes), delai: null });
+    await post("/api/relance-date", { entreprise: rennes, date: "2030-02-10" });
+    await post("/api/lettre", { entreprise: rennes, content: `---\ntype: lettre\nentreprise: ${rennes}\nstatut: brouillon\n---\n\nx` });
+    await post("/api/lettre", { entreprise: rennes, poste: String(posteRennes), content: `---\ntype: lettre\nentreprise: ${rennes}\nstatut: brouillon\n---\n\nx` });
+
+    expect((await post("/api/entreprise-fusionner", { source: rennes, cible: rennes })).status).toBe(400);
+    expect(await (await post("/api/entreprise-fusionner", { source: rennes, cible: rennes })).text()).toContain("Fusion impossible: même entreprise");
+
+    expect((await post("/api/entreprise-fusionner", { source: rennes, cible: auray })).status).toBe(200);
+
+    const [cible] = await sql<{ id: number; prochaine_relance: string | null }[]>`SELECT id, prochaine_relance FROM companies WHERE nom = ${auray}`;
+    expect(await sql`SELECT 1 AS ok FROM companies WHERE nom = ${rennes}`).toHaveLength(0);
+    expect((await sql<{ nom: string }[]>`SELECT nom FROM contacts WHERE company_id = ${cible!.id}`).map((c) => c.nom)).toContain("TEST-contact-rennes");
+    expect((await sql<{ type: string }[]>`SELECT type FROM interactions WHERE company_id = ${cible!.id} AND poste_id = ${posteRennes}`).map((i) => i.type)).toContain("mail");
+    expect((await sql<{ company_id: number }[]>`SELECT company_id FROM postes WHERE id = ${posteRennes}`)[0]?.company_id).toBe(cible!.id);
+    expect((await sql<{ ville: string }[]>`SELECT ville FROM agences WHERE company_id = ${cible!.id}`).map((a) => a.ville)).toEqual(["Rennes"]);
+    expect(cible!.prochaine_relance).toBe("2030-02-10");
+
+    const lettres = await sql<{ file: string; content: string }[]>`SELECT file, content FROM lettres WHERE file LIKE 'test-grizzlead-rennes%'`;
+    expect(lettres).toHaveLength(2);
+    for (const l of lettres) expect(l.content).toContain(`entreprise: ${auray}`);
+
+    await post("/api/entreprise-supprimer", { entreprise: auray });
+    for (const l of lettres) await post("/api/lettre-supprimer", { file: l.file });
+  });
+
   test("agence: créer, modifier, lier à un poste, supprimer -> poste au siège", async () => {
     await auth("/api/entreprise", { method: "POST", body: JSON.stringify({ nom: "TEST-agences" }) });
     const cree = await auth("/api/agence", { method: "POST", body: JSON.stringify({ entreprise: "TEST-agences", ville: "TEST-Rennes", code_postal: "35000" }) });

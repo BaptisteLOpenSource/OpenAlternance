@@ -374,22 +374,51 @@ export async function updateCompany(companyNom: string, fields: Fiche): Promise<
     WHERE id = ${company.id}`;
 }
 
+const lettresDe = async (companyNom: string) =>
+  (await listLettres()).filter((l) => l.type === "lettre" && l.entreprise.toLowerCase() === companyNom.toLowerCase());
+
+async function setLettresEntreprise(tx: typeof sql, letters: Lettre[], nom: string): Promise<void> {
+  for (const letter of letters) {
+    const content = await readLettre(letter.file);
+    await tx`UPDATE lettres SET content = ${setFrontmatter(content ?? "", { entreprise: nom })} WHERE file = ${letter.file}`;
+  }
+}
+
 // Letter follows the rename: its frontmatter names the company, and letters are matched by that name.
 export async function renameCompany(companyNom: string, nom: string): Promise<void> {
   const company = await findCompany(companyNom);
-  const letters = (await listLettres()).filter((l) => l.type === "lettre" && l.entreprise.toLowerCase() === company.nom.toLowerCase());
+  const letters = await lettresDe(company.nom);
   try {
     await sql.begin(async (tx) => {
       await tx`UPDATE companies SET nom = ${nom} WHERE id = ${company.id}`;
-      for (const letter of letters) {
-        const content = await readLettre(letter.file);
-        await tx`UPDATE lettres SET content = ${setFrontmatter(content ?? "", { entreprise: nom })} WHERE file = ${letter.file}`;
-      }
+      await setLettresEntreprise(tx, letters, nom);
     });
   } catch (error) {
     if (isUniqueViolation(error)) throw new Error(`Entreprise déjà existante: ${nom}`);
     throw error;
   }
+}
+
+// Source siège becomes an agence of target. Relance is replayed from the merged history.
+export async function mergeCompanies(sourceNom: string, targetNom: string): Promise<void> {
+  const source = await findCompany(sourceNom);
+  const target = await findCompany(targetNom);
+  if (source.id === target.id) throw new Error("Fusion impossible: même entreprise");
+  const letters = await lettresDe(source.nom);
+  await sql.begin(async (tx) => {
+    if (source.ville)
+      await tx`INSERT INTO agences (company_id, ville, adresse, code_postal) VALUES (${target.id}, ${source.ville}, ${source.adresse}, ${source.code_postal})`;
+    await tx`UPDATE contacts SET company_id = ${target.id} WHERE company_id = ${source.id}`;
+    await tx`UPDATE interactions SET company_id = ${target.id} WHERE company_id = ${source.id}`;
+    await tx`UPDATE postes SET company_id = ${target.id} WHERE company_id = ${source.id}`;
+    await tx`UPDATE agences SET company_id = ${target.id} WHERE company_id = ${source.id}`;
+    const notes = [target.notes, source.notes].filter(Boolean).join("\n\n") || null;
+    await tx`UPDATE companies SET notes = ${notes} WHERE id = ${target.id}`;
+    await setLettresEntreprise(tx, letters, target.nom);
+    await replayCompany(tx, target.id);
+    await tx`DELETE FROM fichiers WHERE name = ${`logo-${source.id}`}`;
+    await tx`DELETE FROM companies WHERE id = ${source.id}`;
+  });
 }
 
 export type CompanyRow = Company & { derniere_interaction: string | null; contacts: string[] };
@@ -446,7 +475,7 @@ const posteOf = (letter: Lettre, postes: Set<number>) => (letter.poste !== undef
 
 // letters outlive deleted companies: match by name before findCompany
 async function lettreFile(companyNom: string, posteId?: number): Promise<string> {
-  const letters = (await listLettres()).filter((l) => l.type === "lettre" && l.entreprise.toLowerCase() === companyNom.toLowerCase());
+  const letters = await lettresDe(companyNom);
   const postes = new Set(
     (await sql<{ id: number }[]>`SELECT p.id FROM postes p JOIN companies c ON c.id = p.company_id WHERE lower(c.nom) = lower(${companyNom})`).map((p) => p.id),
   );

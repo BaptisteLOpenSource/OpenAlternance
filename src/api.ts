@@ -167,6 +167,7 @@ const ACTIONS: Record<string, (required: Field, optional: Optional, body: Record
       linkedin: optional("linkedin"),
     }),
   "entreprise-renommer": (required) => repo.renameCompany(required("entreprise"), required("nom")),
+  "entreprise-fusionner": (required) => repo.mergeCompanies(required("source"), required("cible")),
   document: (required, optional) => {
     const format = oneOf(required("format"), ["md", "txt"] as const, "format");
     return repo.addDocument(documentFile(required("titre"), format), format, optional("content") ?? "");

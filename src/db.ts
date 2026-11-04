@@ -96,15 +96,6 @@ export function schema(d: Dialect): string[] {
     telephone TEXT,
     linkedin TEXT
   )`,
-    `CREATE TABLE IF NOT EXISTS interactions (
-    id ${ID},
-    company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
-    type TEXT NOT NULL,
-    date TEXT NOT NULL,
-    note TEXT,
-    delai INTEGER DEFAULT 7,
-    ${INTERACTION_COLUMNS.join(",\n    ")}
-  )`,
     `CREATE TABLE IF NOT EXISTS agences (
     id ${ID},
     company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
@@ -122,6 +113,15 @@ export function schema(d: Dialect): string[] {
     candidatures TEXT,
     reponses TEXT,
     agence_id INTEGER REFERENCES agences(id) ON DELETE SET NULL
+  )`,
+    `CREATE TABLE IF NOT EXISTS interactions (
+    id ${ID},
+    company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+    type TEXT NOT NULL,
+    date TEXT NOT NULL,
+    note TEXT,
+    delai INTEGER DEFAULT 7,
+    ${INTERACTION_COLUMNS.join(",\n    ")}
   )`,
     `CREATE TABLE IF NOT EXISTS lettres (
     file TEXT PRIMARY KEY,

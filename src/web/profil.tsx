@@ -4,7 +4,6 @@ import { fileName } from "../logic";
 import type { DesktopInfo } from "./store";
 import { type Send, formFields } from "./shared";
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Label } from "./ui";
-
 // Same form in the account page and in the dashboard dialog: one place for the fields.
 export function ProfilForm({ profil, send }: { profil: Profil; send: Send }) {
   const [username, setUsername] = useState(profil.username);

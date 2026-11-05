@@ -60,7 +60,7 @@ export function BarChart({ data, unit }: { data: Datum[]; unit: string }) {
   );
 }
 
-const barRow = "grid grid-cols-[7rem_1fr_2rem] items-center gap-3 rounded-md px-2 py-1.5 text-left text-sm";
+const barRow = "grid grid-cols-[10rem_1fr_2rem] items-center gap-3 rounded-md px-2 py-1.5 text-left text-sm";
 
 export function BarList({ data, onSelect }: { data: Datum[]; onSelect?: (label: string) => void }) {
   const max = Math.max(1, ...data.map((d) => d.value));

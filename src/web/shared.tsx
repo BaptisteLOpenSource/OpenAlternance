@@ -67,7 +67,7 @@ export const ECHANGE: Record<(typeof TYPES)[number], Tag> = {
   candidature: { label: "Candidature", variant: "info", icon: Send },
   relance: { label: "Relance", variant: "warning", icon: Redo2 },
   entretien: { label: "Entretien", variant: "success", icon: Handshake },
-  reponse: { label: "Réponse", variant: "outline", icon: MessageSquare },
+  reponse: { label: "Réponse", variant: "info", icon: MessageSquare },
   reponse_favorable: { label: "Réponse favorable", variant: "success", icon: CircleCheck },
   reponse_defavorable: { label: "Réponse défavorable", variant: "destructive", icon: CircleX },
   depot: { label: "CV déposé", variant: "info", icon: FileUp },

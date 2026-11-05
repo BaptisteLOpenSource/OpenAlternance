@@ -143,7 +143,7 @@ export function CalendarPage({ state, openCompany }: { state: AppState; openComp
                         <button type="button" popovertarget={`cal-${iso}`} aria-label={`${(events.get(iso) ?? []).length - 2} autres événements, ${dayLabel(iso)}`} class="rounded px-1 py-0.5 text-xs text-muted-foreground hover:bg-muted">
                           +{(events.get(iso) ?? []).length - 2}
                         </button>
-                        <div id={`cal-${iso}`} popover aria-label={dayLabel(iso)} class="m-auto grid max-w-sm gap-1.5 rounded-lg border bg-card p-3 text-card-foreground shadow-lg">
+                        <div role="dialog" id={`cal-${iso}`} popover aria-label={dayLabel(iso)} class="m-auto grid max-w-sm gap-1.5 rounded-lg border bg-card p-3 text-card-foreground shadow-lg">
                           <p class="text-sm font-medium capitalize">{dayLabel(iso)}</p>
                           {(events.get(iso) ?? []).map((e, k) => (
                             <div key={k} class="flex items-center gap-2 text-sm">
@@ -257,7 +257,7 @@ function LettreView({ lettre, send, onTemplate, profil, onDirty }: { lettre: Let
     <Card>
       <CardHeader>
         <CardTitle class="text-base">{lettre.entreprise || lettre.file}</CardTitle>
-        <CardDescription class="truncate">{title}.pdf</CardDescription>
+        <CardDescription class="truncate">{lettre.type === "lettre" ? `${title}.pdf` : "Modèle de lettre"}</CardDescription>
         <CardAction class="flex flex-wrap items-center gap-2">
           <div class="flex rounded-md border p-0.5" role="group" aria-label="Affichage de la lettre">
             {(["pdf", "md", "texte"] as const).map((v) => (
@@ -331,7 +331,7 @@ function LettreView({ lettre, send, onTemplate, profil, onDirty }: { lettre: Let
   );
 }
 
-const TABS = ["toutes", "brouillons", "envoyees"] as const;
+const TABS = ["toutes", "envoyees", "brouillons"] as const;
 type Tab = (typeof TABS)[number];
 const TAB_LABEL: Record<Tab, string> = { toutes: "Toutes", brouillons: "Brouillons", envoyees: "Envoyées" };
 

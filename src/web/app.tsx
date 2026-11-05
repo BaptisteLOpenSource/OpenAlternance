@@ -586,7 +586,7 @@ function App() {
             <p role="status" class="text-sm text-muted-foreground">Chargement...</p>
           ) : (
             <>
-              {page.path === "" && <DashboardPage state={state} send={send} openCompany={openCompany} onOpen={setDialog} />}
+              {page.path === "" && <DashboardPage state={state} send={send} openCompany={openCompany} />}
               {page.path === "compte" && <ComptePage profil={state.profil} send={send} desktop={desktop} backup={backup} />}
               {page.path === "entreprises" &&
                 (companyId === null ? (

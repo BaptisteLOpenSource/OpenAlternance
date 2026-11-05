@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Download, Trash2 } from "lucide-preact";
+import { ChevronLeft, ChevronRight, Download, Trash2, X } from "lucide-preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { CLOSING_STATUTS, LETTRE_STATUTS, type Profil, MOIS_MIN, escapeHtml, fileName, toIso } from "../logic";
 import type { Lettre } from "../repo";
@@ -257,7 +257,7 @@ function LettreView({ lettre, send, onTemplate, profil, onDirty }: { lettre: Let
     <Card>
       <CardHeader>
         <CardTitle class="text-base">{lettre.entreprise || lettre.file}</CardTitle>
-        <CardDescription>lettres/{lettre.file}</CardDescription>
+        <CardDescription class="truncate">{title}.pdf</CardDescription>
         <CardAction class="flex flex-wrap items-center gap-2">
           <div class="flex rounded-md border p-0.5" role="group" aria-label="Affichage de la lettre">
             {(["pdf", "md", "texte"] as const).map((v) => (
@@ -284,6 +284,9 @@ function LettreView({ lettre, send, onTemplate, profil, onDirty }: { lettre: Let
               <Trash2 />
             </Button>
           )}
+          <Button variant="ghost" size="icon-sm" aria-label="Fermer l'aperçu" onClick={() => (location.hash = "#/lettres")}>
+            <X />
+          </Button>
           <Button size="sm" disabled={!data} onClick={() => (view === "pdf" ? frame.current?.contentWindow?.postMessage("print", "*") : setView("pdf"))}>
             <Download />
             {view === "pdf" ? "Imprimer" : "Aperçu PDF"}
@@ -328,6 +331,61 @@ function LettreView({ lettre, send, onTemplate, profil, onDirty }: { lettre: Let
   );
 }
 
+const TABS = ["toutes", "brouillons", "envoyees"] as const;
+type Tab = (typeof TABS)[number];
+const TAB_LABEL: Record<Tab, string> = { toutes: "Toutes", brouillons: "Brouillons", envoyees: "Envoyées" };
+
+function LettreList({ list, file, dirty, select, label, send }: { list: Lettre[]; file: string | null; dirty: boolean; select: (f: string) => void; label: (l: Lettre) => string; send: Send }) {
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Entreprise</TableHead>
+          <TableHead>Statut</TableHead>
+          <TableHead class="hidden sm:table-cell">Envoyée le</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+          {list.map((l) => (
+            <TableRow key={l.file} data-lettre={l.file} class={cn("cursor-pointer", l.file === file && "bg-muted/50")} onClick={(e) => !(e.target as Element).closest("button, [popover]") && select(l.file)}>
+              <TableCell>
+                <button
+                  type="button"
+                  class="text-left font-medium hover:underline"
+                  aria-current={l.file === file ? "true" : undefined}
+                  onClick={() => select(l.file)}
+                >
+                  {label(l)}
+                </button>
+                <span class="block text-xs tabular-nums text-muted-foreground sm:hidden">{shortDate(l.date_envoi ?? null)}</span>
+              </TableCell>
+              <TableCell>
+                {/* open letter with unsaved text: its own control guards the change */}
+                {l.entreprise && !(dirty && l.file === file) ? (
+                  <span class="inline-flex">
+                    <Select
+                      class="w-auto py-0 text-sm sm:h-8"
+                      aria-label={`Statut de la lettre ${l.entreprise}`}
+                      value={lettreStatut(l)}
+                      options={LETTRE_STATUTS.map((s) => ({ value: s, label: LETTRE_LABEL[s] }))}
+                      onChange={(statut) => send("lettre-statut", { entreprise: l.entreprise, statut })}
+                    />
+                  </span>
+                ) : (
+                  <Badge variant={lettreStatut(l) === "envoyee" ? "success" : "outline"}>
+                    {LETTRE_LABEL[lettreStatut(l)]}
+                    {dirty && l.file === file && <span class="sr-only"> (enregistrez avant de changer le statut)</span>}
+                  </Badge>
+                )}
+              </TableCell>
+              <TableCell class="hidden tabular-nums sm:table-cell">{shortDate(l.date_envoi ?? null)}</TableCell>
+            </TableRow>
+          ))}
+      </TableBody>
+    </Table>
+  );
+}
+
 export function LettresPage({ state, send, initial }: { state: AppState; send: Send; initial?: string }) {
   // Selection lives in the hash, so back/forward and deep links work.
   const file = initial ?? null;
@@ -354,6 +412,7 @@ export function LettresPage({ state, send, initial }: { state: AppState; send: S
   };
   const selected = state.lettres.find((l) => l.file === file);
   const [pick, setPick] = useState("");
+  const [tab, setTab] = useState<Tab>("toutes");
   const [dirty, setDirty] = useState(false);
   const free = state.companies.filter((c) => !CLOSING_STATUTS.has(c.statut) && !lettreOf(c, state));
   const add = async () => {
@@ -364,102 +423,92 @@ export function LettresPage({ state, send, initial }: { state: AppState; send: S
       setPick("");
     }
   };
+  const groups = [
+    { tab: "brouillons", title: "Brouillons", list: letters.filter((l) => lettreStatut(l) === "brouillon") },
+    { tab: "envoyees", title: "Envoyées", list: letters.filter((l) => lettreStatut(l) === "envoyee") },
+  ] as const;
+  const count = (t: Tab) => (t === "toutes" ? letters.length : groups.find((g) => g.tab === t)!.list.length);
   return (
-    <div class="grid gap-4 md:gap-6">
-      {state.pdfs.length > 0 && (
+    <div class={cn("grid items-start gap-4 md:gap-6", selected && "lg:grid-cols-2")}>
+      <div class="grid gap-4 md:gap-6">
+        {state.pdfs.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>PDF importés</CardTitle>
+              <CardDescription>Lettres au format PDF stockées en base</CardDescription>
+            </CardHeader>
+            <CardContent class="flex flex-wrap gap-2">
+              {state.pdfs.map((name) => (
+                <a href={`/api/fichiers/${encodeURIComponent(name)}`} target="_blank" rel="noopener" class="text-sm underline underline-offset-4">
+                  {name}
+                  <span class="sr-only"> (nouvel onglet)</span>
+                </a>
+              ))}
+            </CardContent>
+          </Card>
+        )}
         <Card>
           <CardHeader>
-            <CardTitle>PDF importés</CardTitle>
-            <CardDescription>Lettres au format PDF stockées en base</CardDescription>
-          </CardHeader>
-          <CardContent class="flex flex-wrap gap-2">
-            {state.pdfs.map((name) => (
-              <a href={`/api/fichiers/${encodeURIComponent(name)}`} target="_blank" rel="noopener" class="text-sm underline underline-offset-4">
-                {name}
-                <span class="sr-only"> (nouvel onglet)</span>
+            <CardTitle>Lettres de motivation</CardTitle>
+            <CardDescription>
+              Nom du PDF : {fileName(state.profil.nom_fichier, { username: state.profil.username || "Prenom_Nom", entreprise: "Entreprise" })}.pdf ·{" "}
+              <a href="#/compte" class="underline underline-offset-4">
+                Modifier
               </a>
-            ))}
+            </CardDescription>
+            <CardAction>
+              <Button variant="outline" size="sm" onClick={() => select("_template.md")}>
+                Template
+              </Button>
+            </CardAction>
+          </CardHeader>
+          <CardContent>
+            <div class="flex w-fit max-w-full flex-wrap rounded-md border p-0.5" role="group" aria-label="Filtrer les lettres">
+              {TABS.map((t) => (
+                <Button variant={tab === t ? "secondary" : "ghost"} size="sm" class="sm:h-7" aria-pressed={tab === t} onClick={() => setTab(t)}>
+                  {TAB_LABEL[t]} ({count(t)})
+                </Button>
+              ))}
+            </div>
+            {free.length === 0 ? (
+              <p class="mt-4 text-sm text-muted-foreground">Aucune entreprise sans lettre. Ajoutez une entreprise ou rouvrez-en une fermée.</p>
+            ) : (
+              <div class="mt-4 flex flex-wrap items-center gap-2">
+                <Select
+                  class="w-auto py-0 text-sm sm:h-8"
+                  aria-label="Entreprise de la nouvelle lettre"
+                  value={pick}
+                  onChange={setPick}
+                  options={[{ value: "", label: "Choisir une entreprise" }, ...free.map((c) => c.nom)]}
+                />
+                <Button size="sm" disabled={!pick} onClick={add}>
+                  Ajouter lettre de motivation
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
-      )}
-      <Card>
-        <CardHeader>
-          <CardTitle>Lettres de motivation</CardTitle>
-          <CardDescription>Fichiers du dossier lettres/ · clic pour l'aperçu</CardDescription>
-          <CardAction>
-            <Button variant="outline" size="sm" onClick={() => select("_template.md")}>
-              Template
-            </Button>
-          </CardAction>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Entreprise</TableHead>
-                <TableHead>Statut</TableHead>
-                <TableHead class="hidden sm:table-cell">Envoyée le</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {letters.map((l) => (
-                <TableRow key={l.file} data-lettre={l.file} class={cn("cursor-pointer", l.file === file && "bg-muted/50")} onClick={(e) => !(e.target as Element).closest("button, [popover]") && select(l.file)}>
-                  <TableCell>
-                    <button
-                      type="button"
-                      class="text-left font-medium hover:underline"
-                      aria-current={l.file === file ? "true" : undefined}
-                      onClick={() => select(l.file)}
-                    >
-                      {lettreLabel(l)}
-                    </button>
-                    <span class="block text-xs tabular-nums text-muted-foreground sm:hidden">{shortDate(l.date_envoi ?? null)}</span>
-                  </TableCell>
-                  <TableCell>
-                    {/* open letter with unsaved text: its own control guards the change */}
-                    {l.entreprise && !(dirty && l.file === file) ? (
-                      <span class="inline-flex">
-                        <Select
-                          class="w-auto py-0 text-sm sm:h-8"
-                          aria-label={`Statut de la lettre ${l.entreprise}`}
-                          value={lettreStatut(l)}
-                          options={LETTRE_STATUTS.map((s) => ({ value: s, label: LETTRE_LABEL[s] }))}
-                          onChange={(statut) => send("lettre-statut", { entreprise: l.entreprise, statut })}
-                        />
-                      </span>
-                    ) : (
-                      <Badge variant={lettreStatut(l) === "envoyee" ? "success" : "outline"}>
-                        {LETTRE_LABEL[lettreStatut(l)]}
-                        {dirty && l.file === file && <span class="sr-only"> (enregistrez avant de changer le statut)</span>}
-                      </Badge>
-                    )}
-                  </TableCell>
-                  <TableCell class="hidden tabular-nums sm:table-cell">{shortDate(l.date_envoi ?? null)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          {letters.length === 0 && <p class="mt-2 text-sm text-muted-foreground">Aucune lettre.</p>}
-          {free.length === 0 ? (
-            <p class="mt-4 text-sm text-muted-foreground">Aucune entreprise sans lettre. Ajoutez une entreprise ou rouvrez-en une fermée.</p>
-          ) : (
-            <div class="mt-4 flex flex-wrap items-center gap-2">
-              <Select
-                class="w-auto py-0 text-sm sm:h-8"
-                aria-label="Entreprise de la nouvelle lettre"
-                value={pick}
-                onChange={setPick}
-                options={[{ value: "", label: "Choisir une entreprise" }, ...free.map((c) => c.nom)]}
-              />
-              <Button size="sm" disabled={!pick} onClick={add}>
-                Ajouter lettre de motivation
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+        {groups.map(
+          (g) =>
+            (tab === "toutes" ? g.list.length > 0 : tab === g.tab) && (
+              <Card key={g.tab}>
+                <CardHeader>
+                  <CardTitle class="text-base">{g.title}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {g.list.length === 0 ? (
+                    <p class="text-sm text-muted-foreground">Aucune lettre.</p>
+                  ) : (
+                    <LettreList list={g.list} file={file} dirty={dirty} select={select} label={lettreLabel} send={send} />
+                  )}
+                </CardContent>
+              </Card>
+            ),
+        )}
+        {tab === "toutes" && letters.length === 0 && <p class="text-sm text-muted-foreground">Aucune lettre.</p>}
+      </div>
       {selected && (
-        <div ref={detail} tabIndex={-1} class="focus:outline-none">
+        <div ref={detail} tabIndex={-1} class="focus:outline-none lg:sticky lg:top-4">
           <LettreView
             key={`${selected.file}-${selected.statut}-${selected.date_envoi}`}
             lettre={selected}

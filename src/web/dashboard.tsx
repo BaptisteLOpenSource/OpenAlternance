@@ -1,9 +1,9 @@
 import { BarChart3, ChevronRight, Bell, Building2, Mail, Table2, Trophy } from "lucide-preact";
 import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
-import { STATUTS, type Statut, TYPES, fileName, weeklyCounts } from "../logic";
+import { STATUTS, type Statut, TYPES, weeklyCounts } from "../logic";
 import { BarChart, BarList, DataTable, type Datum } from "./charts";
-import { DeleteEchange, ECHANGE, EchangeBadge, RelanceBadge, STATUT, dotOf, isEchange, type Open, type Send, StatutBadge, dueTrack, isOpen, relanceEnvoyee, shortDate } from "./shared";
+import { DeleteEchange, ECHANGE, EchangeBadge, RelanceBadge, STATUT, dotOf, isEchange, type Send, StatutBadge, dueTrack, isOpen, relanceEnvoyee, shortDate } from "./shared";
 import type { AppState, CompanyEtat } from "./store";
 import {
   Button,
@@ -88,7 +88,7 @@ function ChartCard({
   );
 }
 
-export function DashboardPage({ state, send, openCompany, onOpen }: { state: AppState; send: Send; openCompany: (id: number) => void; onOpen: Open }) {
+export function DashboardPage({ state, send, openCompany }: { state: AppState; send: Send; openCompany: (id: number) => void }) {
   const { companies, interactions, today } = state;
   const [status, setStatus] = useState("");
   const due = companies.filter(isOpen).sort((a, b) => a.prochaine_relance!.localeCompare(b.prochaine_relance!));
@@ -214,20 +214,6 @@ export function DashboardPage({ state, send, openCompany, onOpen }: { state: App
             </TableBody>
           </Table>
         </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle class="text-base">Nom du PDF de lettre</CardTitle>
-          <CardDescription class="truncate">
-            {fileName(state.profil.nom_fichier, { username: state.profil.username || "Prenom_Nom", entreprise: "Entreprise" })}.pdf
-          </CardDescription>
-          <CardAction>
-            <Button variant="outline" size="sm" onClick={() => onOpen({ kind: "profil" })}>
-              Modifier
-            </Button>
-          </CardAction>
-        </CardHeader>
       </Card>
     </div>
   );

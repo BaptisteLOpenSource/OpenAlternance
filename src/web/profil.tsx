@@ -7,6 +7,8 @@ import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Inpu
 
 // Same form in the account page and in the dashboard dialog: one place for the fields.
 export function ProfilForm({ profil, send, onDone }: { profil: Profil; send: Send; onDone?: () => void }) {
+  const [username, setUsername] = useState(profil.username);
+  const [format, setFormat] = useState(profil.nom_fichier);
   const submit = async (e: SubmitEvent) => {
     e.preventDefault();
     const fields = formFields(e.currentTarget as HTMLFormElement);
@@ -16,7 +18,7 @@ export function ProfilForm({ profil, send, onDone }: { profil: Profil; send: Sen
     <form class="grid gap-4" onSubmit={submit}>
       <div class="grid gap-4 sm:grid-cols-2">
         <Label label="Nom d'utilisateur (obligatoire, signature et nom du PDF)">
-          <Input name="username" required defaultValue={profil.username} autofocus={!!onDone} />
+          <Input name="username" required defaultValue={profil.username} autofocus={!!onDone} onInput={(e) => setUsername(e.currentTarget.value)} />
         </Label>
         <Label label="Email (optionnel)">
           <Input name="email" type="email" defaultValue={profil.email} />
@@ -32,10 +34,10 @@ export function ProfilForm({ profil, send, onDone }: { profil: Profil; send: Sen
         <Input name="adresse" defaultValue={profil.adresse} />
       </Label>
       <Label label="Format du nom du PDF de lettre (obligatoire)">
-        <Input name="nom_fichier" required defaultValue={profil.nom_fichier} />
+        <Input name="nom_fichier" required defaultValue={profil.nom_fichier} onInput={(e) => setFormat(e.currentTarget.value)} />
       </Label>
       <p class="break-all text-sm text-muted-foreground">
-        Variables : {"{username}"}, {"{entreprise}"}. Exemple : {fileName(profil.nom_fichier, { username: profil.username || "Prenom_Nom", entreprise: "Entreprise" })}.pdf
+        Variables : {"{username}"}, {"{entreprise}"}. Exemple : {fileName(format, { username: username || "Prenom_Nom", entreprise: "Entreprise" })}.pdf
       </p>
       <div class="flex justify-end gap-2">
         <Button type="submit" class="w-full sm:w-auto">

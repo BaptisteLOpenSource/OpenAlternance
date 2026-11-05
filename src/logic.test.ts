@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { daysBetween, isoAgo, logoPalette } from "./logic";
-import { TABLEUR_COLUMNS, missingFields, tableurRow, toTsv, type TableurCompany, addDays, aggregateStatut, carry, delaiDays, documentFile, isoDate, isWebUrl, parseFrontmatter, relanceForStatut, replayEchanges, replayTracks, type Row, setFrontmatter, slug, stripFrontmatter, relanceAfter, statutAfter, weeklyCounts } from "./logic";
+import { TABLEUR_COLUMNS, fillPlaceholder, placeholders, missingFields, tableurRow, toTsv, type TableurCompany, addDays, aggregateStatut, carry, delaiDays, documentFile, isoDate, isWebUrl, parseFrontmatter, relanceForStatut, replayEchanges, replayTracks, type Row, setFrontmatter, slug, stripFrontmatter, relanceAfter, statutAfter, weeklyCounts } from "./logic";
 import { NOM_FICHIER_DEFAUT, PROFIL_VIDE, contactWrite, fileName, fillProfil } from "./logic";
 
 test("réouvrir une entreprise fermée remet une relance à J+7", () => {
@@ -318,4 +318,12 @@ describe("logoPalette", () => {
   test("entrée vide -> []", () => {
     expect(logoPalette(new Uint8ClampedArray())).toEqual([]);
   });
+});
+
+test("placeholders: une entrée par nom, choix avec options, frontmatter ignoré; fill remplace toutes les graphies", () => {
+  
+  const md = "---\nx: {{non}}\n---\n{{poste}} {{ poste }}\n{{choix: A | B }}";
+  const [poste, choix] = placeholders(md);
+  expect(placeholders(md)).toEqual([{ raw: "{{poste}}", name: "poste" }, { raw: "{{choix: A | B }}", name: "choix", options: ["A", "B"] }]);
+  expect(fillPlaceholder(fillPlaceholder(md, poste, "Dev $1"), choix, "B")).toBe("---\nx: {{non}}\n---\nDev $1 Dev $1\nB");
 });

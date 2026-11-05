@@ -38,7 +38,7 @@ export const LETTRE_LABEL: Record<LettreStatut, string> = { brouillon: "Brouillo
 export const lettreStatut = (lettre: Lettre): LettreStatut => (lettre.statut === "envoyee" ? "envoyee" : "brouillon");
 
 // Semantic tone: success = positive, warning = waiting, destructive = negative, info = standard action.
-type Tag = { label: string; variant: BadgeVariant; icon: typeof Mail };
+export type Tag = { label: string; variant: BadgeVariant; icon: typeof Mail };
 const DOT: Record<BadgeVariant, string> = {
   default: "bg-primary",
   secondary: "bg-foreground",
@@ -67,14 +67,14 @@ export const ECHANGE: Record<(typeof TYPES)[number], Tag> = {
   candidature: { label: "Candidature", variant: "info", icon: Send },
   relance: { label: "Relance", variant: "warning", icon: Redo2 },
   entretien: { label: "Entretien", variant: "success", icon: Handshake },
-  reponse: { label: "Réponse", variant: "outline", icon: MessageSquare },
+  reponse: { label: "Réponse", variant: "info", icon: MessageSquare },
   reponse_favorable: { label: "Réponse favorable", variant: "success", icon: CircleCheck },
   reponse_defavorable: { label: "Réponse défavorable", variant: "destructive", icon: CircleX },
   depot: { label: "CV déposé", variant: "info", icon: FileUp },
 };
 export const CONTRAT_LABEL: Record<Contrat, string> = { alternance: "Alternance", stage: "Stage", cdd: "CDD", cdi: "CDI", interim: "Intérim" };
 export const CONTRAT_OPTIONS = CONTRATS.map((c) => ({ value: c, label: CONTRAT_LABEL[c] }));
-export const echangeLabel = (type: string) => ECHANGE[type as (typeof TYPES)[number]]?.label ?? type;
+export const echangeLabel = (type: string) => ECHANGE[type as (typeof TYPES)[number]]?.label ?? "Suivi";
 
 export const TagBadge = ({ tag, class: className }: { tag: Tag; class?: string }) => (
   <Badge variant={tag.variant} class={className}>
@@ -82,8 +82,8 @@ export const TagBadge = ({ tag, class: className }: { tag: Tag; class?: string }
     {tag.label}
   </Badge>
 );
-export const EchangeBadge = ({ type }: { type: string }) =>
-  type in ECHANGE ? <TagBadge tag={ECHANGE[type as (typeof TYPES)[number]]} /> : <Badge variant="outline">{type}</Badge>;
+export const isEchange = (type: string): type is (typeof TYPES)[number] => type in ECHANGE;
+export const EchangeBadge = ({ type }: { type: string }) => (isEchange(type) ? <TagBadge tag={ECHANGE[type]} /> : null);
 
 export const formFields = (form: HTMLFormElement) =>
   Object.fromEntries([...new FormData(form)].map(([k, v]) => [k, typeof v === "string" ? v : v.name]));
@@ -91,7 +91,7 @@ export const formFields = (form: HTMLFormElement) =>
 // Resolves false on failure, true on success, or the created letter's file name.
 export type Send = (action: Action, fields: Record<string, string>) => Promise<boolean | string>;
 export type DialogState = {
-  kind: "entreprise" | "personne" | "echange" | "modifier-personne" | "modifier-echange" | "lettre" | "document" | "profil" | "poste" | "modifier-poste" | "agence" | "fusion";
+  kind: "entreprise" | "personne" | "echange" | "modifier-personne" | "modifier-echange" | "lettre" | "document" | "poste" | "modifier-poste" | "agence" | "fusion";
   company?: string;
   id?: number;
   type?: InteractionType;

@@ -243,7 +243,7 @@ function Sidebar({
             items={[
               { label: "Nouvelle entreprise", run: () => onOpen({ kind: "entreprise" }) },
               { label: "Nouvelle lettre de motivation", run: () => onOpen({ kind: "lettre" }) },
-              { label: "Nouveau document (PDF, TXT, Markdown)", run: () => onOpen({ kind: "document" }) },
+              { label: "Nouveau document (PDF, Word, ODT, Markdown, TXT)", run: () => onOpen({ kind: "document" }) },
             ]}
           />
           {onLogout && <div class="relative" onFocusOut={(e) => !e.currentTarget.contains(e.relatedTarget as Node) && setMenu(false)}>
@@ -586,7 +586,7 @@ function App() {
             <p role="status" class="text-sm text-muted-foreground">Chargement...</p>
           ) : (
             <>
-              {page.path === "" && <DashboardPage state={state} send={send} openCompany={openCompany} onOpen={setDialog} />}
+              {page.path === "" && <DashboardPage state={state} send={send} openCompany={openCompany} />}
               {page.path === "compte" && <ComptePage profil={state.profil} send={send} desktop={desktop} backup={backup} />}
               {page.path === "entreprises" &&
                 (companyId === null ? (

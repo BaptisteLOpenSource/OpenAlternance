@@ -1,7 +1,7 @@
 import { SESSION_DAYS, clearSessionCookie, digest, newSessionToken, passwordMatches, sessionCookie, sessionTokenFrom } from "./auth";
 import { sql } from "./db";
 import { CONTRATS, FICHE_TEXTES, LETTRE_STATUTS, MAIL_CANAUX, NOM_FICHIER_DEFAUT, STATUTS, SUIVIS, TYPES, delaiDays, documentFile, isoAgo, isoDate, oneOf, replayTracks, stripFrontmatter, today } from "./logic";
-import { MAX_PDF_BASE64, pdfToHtml, renderDocument } from "./documents";
+import { MAX_PDF_BASE64, officeToHtml, pdfToHtml, renderDocument } from "./documents";
 import { logoType } from "./logo";
 import * as repo from "./repo";
 
@@ -23,11 +23,15 @@ export function authRequired(env: Record<string, string | undefined>): boolean {
 // Key embeds password fingerprint: old-password sessions stop matching.
 const sessionKey = (cookieToken: string): string => `${digest(PASSWORD).toString("hex").slice(0, 16)}.${cookieToken}`;
 
+function uploadBytes(data: string): Uint8Array {
+  if (data.length > MAX_PDF_BASE64) throw new Error("fichier trop volumineux (3 Mo max)");
+  return new Uint8Array(Buffer.from(data, "base64"));
+}
+
 function pdfBytes(data: string): Uint8Array {
-  if (data.length > MAX_PDF_BASE64) throw new Error("PDF trop volumineux (3 Mo max)");
-  const bytes = Buffer.from(data, "base64");
-  if (bytes.subarray(0, 5).toString("latin1") !== "%PDF-") throw new Error("fichier PDF invalide");
-  return new Uint8Array(bytes);
+  const bytes = uploadBytes(data);
+  if (Buffer.from(bytes.subarray(0, 5)).toString("latin1") !== "%PDF-") throw new Error("fichier PDF invalide");
+  return bytes;
 }
 
 const json = (body: unknown, status = 200, headers?: HeadersInit) => Response.json(body, { status, headers });
@@ -85,6 +89,8 @@ const refId = (optional: Optional, name: string): number | undefined => {
   const value = optional(name);
   return value ? Number(value) : undefined;
 };
+
+const documentLink = (optional: Optional): repo.DocumentLink => ({ companyId: refId(optional, "company"), interactionId: refId(optional, "echange") });
 
 const posteFields = (required: Field, optional: Optional) => {
   const contrat = optional("contrat");
@@ -175,14 +181,19 @@ const ACTIONS: Record<string, (required: Field, optional: Optional, body: Record
   "entreprise-fusionner": (required) => repo.mergeCompanies(required("source"), required("cible")),
   document: (required, optional) => {
     const format = oneOf(required("format"), ["md", "txt"] as const, "format");
-    return repo.addDocument(documentFile(required("titre"), format), format, optional("content") ?? "");
+    return repo.addDocument(documentFile(required("titre"), format), format, optional("content") ?? "", documentLink(optional));
   },
-  "document-pdf": async (required) => repo.addPdfDocument(documentFile(required("titre"), "pdf"), pdfBytes(required("data"))),
+  "document-pdf": async (required, optional) => repo.addPdfDocument(documentFile(required("titre"), "pdf"), pdfBytes(required("data")), documentLink(optional)),
+  "document-office": (required, optional) =>
+    repo.addDocument(documentFile(required("titre"), "html"), "html", officeToHtml(uploadBytes(required("data"))), documentLink(optional)),
+  "document-lier": (required, optional) => repo.linkDocument(required("name"), documentLink(optional)),
   "document-texte": async (required) => {
     const name = required("name");
     const data = SAFE_FICHIER.test(name) ? await repo.readPdf(name) : null;
     if (!data) throw new Error(`PDF introuvable: ${name}`);
-    await repo.addDocument(`${name.slice(0, -".pdf".length)}.html`, "html", await pdfToHtml(data));
+    const source = await repo.readDocument(name);
+    const link = { companyId: source?.company_id ?? undefined, interactionId: source?.interaction_id ?? undefined };
+    await repo.addDocument(`${name.slice(0, -".pdf".length)}.html`, "html", await pdfToHtml(data), link);
   },
   cv: async (required) => repo.writeFichier("cv.pdf", pdfBytes(required("data"))),
   "document-modifier": (required, _optional, body) => repo.updateDocument(required("name"), content(body)),

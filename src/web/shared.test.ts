@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { Company } from "../repo";
-import { type Send, sendFiche } from "./shared";
+import { isEchange, type Send, sendFiche } from "./shared";
 
 test("sendFiche garde les champs d'un envoi encore en vol", async () => {
   const sent: Record<string, string>[] = [];
@@ -34,4 +34,10 @@ test("lettre-statut sans entreprise: rien n'est envoyé", async () => {
   expect(sent).toEqual([]);
   await run({ send, lettre: { entreprise: "Acme", statut: "brouillon" } } as never);
   expect(sent).toHaveLength(1);
+});
+
+test("isEchange exclut les evenements de suivi", () => {
+  expect(isEchange("statut")).toBe(false);
+  expect(isEchange("planif")).toBe(false);
+  expect(isEchange("reponse_favorable")).toBe(true);
 });

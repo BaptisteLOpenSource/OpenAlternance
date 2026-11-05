@@ -166,6 +166,25 @@ export function stripFrontmatter(content: string): string {
   return content.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "");
 }
 
+// Unfilled {{name}} left in a letter, one entry per name; each {{choix: a | b}} is its own entry.
+export type Placeholder = { raw: string; name: string; options?: string[] };
+export function placeholders(content: string): Placeholder[] {
+  const found = new Map<string, Placeholder>();
+  for (const [raw, inner] of stripFrontmatter(content).matchAll(/\{\{([^{}]+)\}\}/g)) {
+    const choix = /^\s*choix\s*:([\s\S]*)$/.exec(inner);
+    if (choix) found.set(raw, { raw, name: "choix", options: choix[1].split("|").map((o) => o.trim()).filter(Boolean) });
+    else if (!found.has(inner.trim())) found.set(inner.trim(), { raw, name: inner.trim() });
+  }
+  return [...found.values()];
+}
+
+// Every spelling of the name ({{poste}}, {{ poste }}) gets the value; a choix only its own raw.
+export function fillPlaceholder(content: string, p: Placeholder, value: string): string {
+  if (p.options) return content.replaceAll(p.raw, () => value);
+  const name = p.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return content.replace(new RegExp(`\\{\\{\\s*${name}\\s*\\}\\}`, "g"), () => value);
+}
+
 export function statutAfter(type: InteractionType, current: Statut): Statut {
   if (CLOSING_STATUTS.has(current)) return current;
   return STATUT_BY_TYPE[type] ?? current;

@@ -18,7 +18,17 @@ async function untilReady(stdout: ReadableStream<Uint8Array>, line: string): Pro
   reader.releaseLock();
 }
 
-async function withApp(port: number, config: object | null, run: (base: string) => Promise<void>) {
+// Fixed ports collide with orphans of an interrupted run: main.ts sees
+// "our server" there and exits 0 silently.
+function freePort(): number {
+  const probe = Bun.serve({ port: 0, fetch: () => new Response() });
+  const port = probe.port as number;
+  probe.stop(true);
+  return port;
+}
+
+async function withApp(config: object | null, run: (base: string) => Promise<void>) {
+  const port = freePort();
   const dir = mkdtempSync(join(tmpdir(), "oa-main-"));
   const appdata = join(dir, "roaming");
   const local = join(dir, "local");
@@ -51,7 +61,7 @@ async function withApp(port: number, config: object | null, run: (base: string) 
 }
 
 test("local mode serves state and info without origin", async () => {
-  await withApp(3741, null, async (base) => {
+  await withApp(null, async (base) => {
     expect((await fetch(`${base}/api/state`)).status).toBe(200);
     const info = await (await fetch(`${base}/api/desktop/info`)).json();
     expect(info.mode).toBe("local");
@@ -60,7 +70,7 @@ test("local mode serves state and info without origin", async () => {
 }, 30_000);
 
 test("desktop POST rejects foreign origin", async () => {
-  await withApp(3742, null, async (base) => {
+  await withApp(null, async (base) => {
     const res = await fetch(`${base}/api/desktop/backup`, {
       method: "POST",
       headers: { origin: "http://evil.test" },
@@ -71,7 +81,7 @@ test("desktop POST rejects foreign origin", async () => {
 }, 30_000);
 
 test("backup refused in local mode", async () => {
-  await withApp(3743, null, async (base) => {
+  await withApp(null, async (base) => {
     const res = await fetch(`${base}/api/desktop/backup`, { method: "POST", headers: { origin: base } });
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "sauvegarde: mode en ligne uniquement" });
@@ -79,7 +89,7 @@ test("backup refused in local mode", async () => {
 }, 30_000);
 
 test("update without a known release answers 400", async () => {
-  await withApp(3746, null, async (base) => {
+  await withApp(null, async (base) => {
     const res = await fetch(`${base}/api/desktop/update`, { method: "POST", headers: { origin: base } });
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "aucune mise à jour" });
@@ -88,7 +98,7 @@ test("update without a known release answers 400", async () => {
 
 // win32 config path; covered by the windows release job.
 test.skipIf(process.platform !== "win32")("online without url answers 503 guide on every api route", async () => {
-  await withApp(3744, { mode: "online" }, async (base) => {
+  await withApp({ mode: "online" }, async (base) => {
     const res = await fetch(`${base}/api/state`);
     expect(res.status).toBe(503);
     const body = await res.text();
@@ -98,7 +108,7 @@ test.skipIf(process.platform !== "win32")("online without url answers 503 guide 
 }, 30_000);
 
 test("second instance on same port exits 0", async () => {
-  await withApp(3745, null, async () => {
+  await withApp(null, async (base) => {
     const dir = mkdtempSync(join(tmpdir(), "oa-main2-"));
     try {
       const proc = Bun.spawn(["bun", MAIN], {
@@ -112,7 +122,7 @@ test("second instance on same port exits 0", async () => {
           DATABASE_URL: "",
           OPENALTERNANCE_NO_WINDOW: "1",
           OPENALTERNANCE_NO_UPDATE_CHECK: "1",
-          OPENALTERNANCE_DESKTOP_PORT: "3745",
+          OPENALTERNANCE_DESKTOP_PORT: new URL(base).port,
         },
         stdout: "pipe",
         stderr: "pipe",

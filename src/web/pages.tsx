@@ -1,11 +1,11 @@
-import { ChevronLeft, ChevronRight, Printer, Save, Trash2 } from "lucide-preact";
+import { ChevronLeft, ChevronRight, Printer, Save, Trash2, X } from "lucide-preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { CLOSING_STATUTS, LETTRE_STATUTS, type Profil, MOIS_MIN, escapeHtml, fileName, parseFrontmatter, placeholders, setFrontmatter, stripFrontmatter, toIso } from "../logic";
 import type { Lettre } from "../repo";
 import { createLettre, deleteLettre, lettreOf } from "./commands";
 import { Toggle, VariablesPanel, VisualEditor } from "./lettre";
 import { Select } from "./menus";
-import { CopyButton, LETTRE_LABEL, echangeLabel, LettreStatutControl, type Send, isOpen, lettreStatut, shortDate } from "./shared";
+import { CopyButton, LETTRE_LABEL, ECHANGE, LettreStatutControl, type Send, TagBadge, type Tag, dotOf, isEchange, isOpen, lettreStatut, shortDate } from "./shared";
 import { type AppState, fetchLettre, fetchLogo } from "./store";
 import {
   Badge,
@@ -30,11 +30,10 @@ export function CalendarPage({ state, openCompany }: { state: AppState; openComp
   const [year, monthIndex] = month.split("-").map(Number);
   const shift = (delta: number) => setMonth(toIso(new Date(year, monthIndex - 1 + delta, 1)).slice(0, 7));
   const events = useMemo(() => {
-    const map = new Map<string, { relance: boolean; label: string; companyId: number }[]>();
-    const push = (date: string, relance: boolean, label: string, companyId: number) =>
-      map.set(date, [...(map.get(date) ?? []), { relance, label, companyId }]);
-    for (const i of state.interactions) push(i.date, false, `${echangeLabel(i.type)} · ${i.nom}`, i.company_id);
-    for (const c of state.companies.filter(isOpen)) push(c.prochaine_relance!, true, `relance · ${c.nom}`, c.id);
+    const map = new Map<string, { tag: Tag; nom: string; companyId: number }[]>();
+    const push = (date: string, tag: Tag, nom: string, companyId: number) => map.set(date, [...(map.get(date) ?? []), { tag, nom, companyId }]);
+    for (const i of state.interactions) if (isEchange(i.type)) push(i.date, ECHANGE[i.type], i.nom, i.company_id);
+    for (const c of state.companies.filter(isOpen)) push(c.prochaine_relance!, { ...ECHANGE.relance, label: "Relance prévue" }, c.nom, c.id);
     return map;
   }, [state]);
   const offset = (new Date(year, monthIndex - 1, 1).getDay() + 6) % 7;
@@ -49,8 +48,19 @@ export function CalendarPage({ state, openCompany }: { state: AppState; openComp
       <CardHeader>
         <CardTitle class="capitalize">{title}</CardTitle>
         <CardDescription>
-          <span class="mr-3 inline-flex items-center gap-1.5"><span class="size-2 rounded-full bg-warning" />relance</span>
-          <span class="inline-flex items-center gap-1.5"><span class="size-2 rounded-full bg-info" />échange</span>
+          {(
+            [
+              ["Positif", ECHANGE.reponse_favorable],
+              ["En attente", ECHANGE.relance],
+              ["Négatif", ECHANGE.reponse_defavorable],
+              ["Action", ECHANGE.candidature],
+            ] as const
+          ).map(([label, tag]) => (
+            <span key={label} class="mr-3 inline-flex items-center gap-1.5">
+              <span class={cn("size-2 rounded-full", dotOf(tag))} />
+              {label}
+            </span>
+          ))}
         </CardDescription>
         <CardAction class="flex gap-1">
           <Button
@@ -79,9 +89,9 @@ export function CalendarPage({ state, openCompany }: { state: AppState; openComp
               <ul class="grid gap-1.5">
                 {(events.get(iso) ?? []).map((e, k) => (
                   <li key={k} class="flex items-center gap-2 text-sm">
-                    <span class={cn("size-2 shrink-0 rounded-full", e.relance ? "bg-warning" : "bg-info")} />
+                    <TagBadge tag={e.tag} />
                     <button type="button" class="min-w-0 break-words py-2 text-left hover:underline" onClick={() => openCompany(e.companyId)}>
-                      {e.label}
+                      {e.nom}
                     </button>
                   </li>
                 ))}
@@ -114,19 +124,46 @@ export function CalendarPage({ state, openCompany }: { state: AppState; openComp
                   >
                     {Number(iso.slice(8))}
                   </span>
-                  <ul class="mt-1 grid min-w-0 gap-1">
-                    {(events.get(iso) ?? []).map((e, k) => (
+                  <ul class="mt-1 grid min-w-0 gap-0.5">
+                    {(events.get(iso) ?? []).slice(0, 2).map((e, k) => (
                       <li key={k}>
                         <button
                           type="button"
-                          class={cn("block w-full truncate rounded px-1.5 py-0.5 text-left text-xs hover:underline", e.relance ? "bg-warning/20" : "bg-info/15")}
-                          title={e.label}
+                          class="flex w-full items-center gap-1 rounded px-1 py-0.5 text-left text-xs text-foreground hover:bg-muted"
+                          title={`${e.tag.label} · ${e.nom}`}
                           onClick={() => openCompany(e.companyId)}
                         >
-                          {e.label}
+                          <span class={cn("size-1.5 shrink-0 rounded-full", dotOf(e.tag))} />
+                          <e.tag.icon aria-hidden="true" class="size-3 shrink-0" />
+                          <span class="truncate">{e.nom}</span>
                         </button>
                       </li>
                     ))}
+                    {(events.get(iso) ?? []).length > 2 && (
+                      <li>
+                        <button type="button" popovertarget={`cal-${iso}`} aria-label={`${(events.get(iso) ?? []).length - 2} autres événements, ${dayLabel(iso)}`} class="rounded px-1 py-0.5 text-xs text-muted-foreground hover:bg-muted">
+                          +{(events.get(iso) ?? []).length - 2}
+                        </button>
+                        <div role="dialog" id={`cal-${iso}`} popover aria-label={dayLabel(iso)} class="m-auto grid max-w-sm gap-1.5 rounded-lg border bg-card p-3 text-card-foreground shadow-lg">
+                          <p class="text-sm font-medium capitalize">{dayLabel(iso)}</p>
+                          {(events.get(iso) ?? []).map((e, k) => (
+                            <div key={k} class="flex items-center gap-2 text-sm">
+                              <TagBadge tag={e.tag} />
+                              <button
+                                type="button"
+                                class="min-w-0 break-words text-left hover:underline"
+                                onClick={(ev) => {
+                                  ev.currentTarget.closest<HTMLElement>("[popover]")?.hidePopover();
+                                  openCompany(e.companyId);
+                                }}
+                              >
+                                {e.nom}
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </li>
+                    )}
                   </ul>
                 </>
               )}
@@ -282,6 +319,9 @@ function LettreView({ lettre, send, onTemplate, profil, onDirty }: { lettre: Let
             <Printer />
             Imprimer
           </Button>
+          <Button variant="ghost" size="icon-sm" aria-label="Fermer l'aperçu" onClick={() => (location.hash = "#/lettres")}>
+            <X />
+          </Button>
         </CardAction>
       </CardHeader>
       <div class="flex flex-wrap items-center justify-between gap-3 border-y bg-muted/30 px-6 py-2">
@@ -367,6 +407,61 @@ function LettreView({ lettre, send, onTemplate, profil, onDirty }: { lettre: Let
   );
 }
 
+const TABS = ["toutes", "envoyees", "brouillons"] as const;
+type Tab = (typeof TABS)[number];
+const TAB_LABEL: Record<Tab, string> = { toutes: "Toutes", brouillons: "Brouillons", envoyees: "Envoyées" };
+
+function LettreList({ list, file, dirty, select, label, send }: { list: Lettre[]; file: string | null; dirty: boolean; select: (f: string) => void; label: (l: Lettre) => string; send: Send }) {
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Entreprise</TableHead>
+          <TableHead>Statut</TableHead>
+          <TableHead class="hidden sm:table-cell">Envoyée le</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+          {list.map((l) => (
+            <TableRow key={l.file} data-lettre={l.file} class={cn("cursor-pointer", l.file === file && "bg-muted/50")} onClick={(e) => !(e.target as Element).closest("button, [popover]") && select(l.file)}>
+              <TableCell>
+                <button
+                  type="button"
+                  class="text-left font-medium hover:underline"
+                  aria-current={l.file === file ? "true" : undefined}
+                  onClick={() => select(l.file)}
+                >
+                  {label(l)}
+                </button>
+                <span class="block text-xs tabular-nums text-muted-foreground sm:hidden">{shortDate(l.date_envoi ?? null)}</span>
+              </TableCell>
+              <TableCell>
+                {/* open letter with unsaved text: its own control guards the change */}
+                {l.entreprise && !(dirty && l.file === file) ? (
+                  <span class="inline-flex">
+                    <Select
+                      class="w-auto py-0 text-sm sm:h-8"
+                      aria-label={`Statut de la lettre ${l.entreprise}`}
+                      value={lettreStatut(l)}
+                      options={LETTRE_STATUTS.map((s) => ({ value: s, label: LETTRE_LABEL[s] }))}
+                      onChange={(statut) => send("lettre-statut", { entreprise: l.entreprise, statut })}
+                    />
+                  </span>
+                ) : (
+                  <Badge variant={lettreStatut(l) === "envoyee" ? "success" : "outline"}>
+                    {LETTRE_LABEL[lettreStatut(l)]}
+                    {dirty && l.file === file && <span class="sr-only"> (enregistrez avant de changer le statut)</span>}
+                  </Badge>
+                )}
+              </TableCell>
+              <TableCell class="hidden tabular-nums sm:table-cell">{shortDate(l.date_envoi ?? null)}</TableCell>
+            </TableRow>
+          ))}
+      </TableBody>
+    </Table>
+  );
+}
+
 export function LettresPage({ state, send, initial }: { state: AppState; send: Send; initial?: string }) {
   // Selection lives in the hash, so back/forward and deep links work.
   const file = initial ?? null;
@@ -393,6 +488,7 @@ export function LettresPage({ state, send, initial }: { state: AppState; send: S
   };
   const selected = state.lettres.find((l) => l.file === file);
   const [pick, setPick] = useState("");
+  const [tab, setTab] = useState<Tab>("toutes");
   const [dirty, setDirty] = useState(false);
   const free = state.companies.filter((c) => !CLOSING_STATUTS.has(c.statut) && !lettreOf(c, state));
   const add = async () => {
@@ -403,102 +499,92 @@ export function LettresPage({ state, send, initial }: { state: AppState; send: S
       setPick("");
     }
   };
+  const groups = [
+    { tab: "brouillons", title: "Brouillons", list: letters.filter((l) => lettreStatut(l) === "brouillon") },
+    { tab: "envoyees", title: "Envoyées", list: letters.filter((l) => lettreStatut(l) === "envoyee") },
+  ] as const;
+  const count = (t: Tab) => (t === "toutes" ? letters.length : groups.find((g) => g.tab === t)!.list.length);
   return (
-    <div class="grid gap-4 md:gap-6">
-      {state.pdfs.length > 0 && (
+    <div class={cn("grid items-start gap-4 md:gap-6", selected && "lg:grid-cols-2")}>
+      <div class="grid gap-4 md:gap-6">
+        {state.pdfs.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>PDF importés</CardTitle>
+              <CardDescription>Lettres au format PDF stockées en base</CardDescription>
+            </CardHeader>
+            <CardContent class="flex flex-wrap gap-2">
+              {state.pdfs.map((name) => (
+                <a href={`/api/fichiers/${encodeURIComponent(name)}`} target="_blank" rel="noopener" class="text-sm underline underline-offset-4">
+                  {name}
+                  <span class="sr-only"> (nouvel onglet)</span>
+                </a>
+              ))}
+            </CardContent>
+          </Card>
+        )}
         <Card>
           <CardHeader>
-            <CardTitle>PDF importés</CardTitle>
-            <CardDescription>Lettres au format PDF stockées en base</CardDescription>
-          </CardHeader>
-          <CardContent class="flex flex-wrap gap-2">
-            {state.pdfs.map((name) => (
-              <a href={`/api/fichiers/${encodeURIComponent(name)}`} target="_blank" rel="noopener" class="text-sm underline underline-offset-4">
-                {name}
-                <span class="sr-only"> (nouvel onglet)</span>
+            <CardTitle>Lettres de motivation</CardTitle>
+            <CardDescription>
+              Nom du PDF : {fileName(state.profil.nom_fichier, { username: state.profil.username || "Prenom_Nom", entreprise: "Entreprise" })}.pdf ·{" "}
+              <a href="#/compte" class="underline underline-offset-4">
+                Modifier
               </a>
-            ))}
+            </CardDescription>
+            <CardAction>
+              <Button variant="outline" size="sm" onClick={() => select("_template.md")}>
+                Template
+              </Button>
+            </CardAction>
+          </CardHeader>
+          <CardContent>
+            <div class="flex w-fit max-w-full flex-wrap rounded-md border p-0.5" role="group" aria-label="Filtrer les lettres">
+              {TABS.map((t) => (
+                <Button variant={tab === t ? "secondary" : "ghost"} size="sm" class="sm:h-7" aria-pressed={tab === t} onClick={() => setTab(t)}>
+                  {TAB_LABEL[t]} ({count(t)})
+                </Button>
+              ))}
+            </div>
+            {free.length === 0 ? (
+              <p class="mt-4 text-sm text-muted-foreground">Aucune entreprise sans lettre. Ajoutez une entreprise ou rouvrez-en une fermée.</p>
+            ) : (
+              <div class="mt-4 flex flex-wrap items-center gap-2">
+                <Select
+                  class="w-auto py-0 text-sm sm:h-8"
+                  aria-label="Entreprise de la nouvelle lettre"
+                  value={pick}
+                  onChange={setPick}
+                  options={[{ value: "", label: "Choisir une entreprise" }, ...free.map((c) => c.nom)]}
+                />
+                <Button size="sm" disabled={!pick} onClick={add}>
+                  Ajouter lettre de motivation
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
-      )}
-      <Card>
-        <CardHeader>
-          <CardTitle>Lettres de motivation</CardTitle>
-          <CardDescription>Fichiers du dossier lettres/ · clic pour l'aperçu</CardDescription>
-          <CardAction>
-            <Button variant="outline" size="sm" onClick={() => select("_template.md")}>
-              Template
-            </Button>
-          </CardAction>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Entreprise</TableHead>
-                <TableHead>Statut</TableHead>
-                <TableHead class="hidden sm:table-cell">Envoyée le</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {letters.map((l) => (
-                <TableRow key={l.file} data-lettre={l.file} class={cn("cursor-pointer", l.file === file && "bg-muted/50")} onClick={(e) => !(e.target as Element).closest("button, [popover]") && select(l.file)}>
-                  <TableCell>
-                    <button
-                      type="button"
-                      class="text-left font-medium hover:underline"
-                      aria-current={l.file === file ? "true" : undefined}
-                      onClick={() => select(l.file)}
-                    >
-                      {lettreLabel(l)}
-                    </button>
-                    <span class="block text-xs tabular-nums text-muted-foreground sm:hidden">{shortDate(l.date_envoi ?? null)}</span>
-                  </TableCell>
-                  <TableCell>
-                    {/* open letter with unsaved text: its own control guards the change */}
-                    {l.entreprise && !(dirty && l.file === file) ? (
-                      <span class="inline-flex">
-                        <Select
-                          class="w-auto py-0 text-sm sm:h-8"
-                          aria-label={`Statut de la lettre ${l.entreprise}`}
-                          value={lettreStatut(l)}
-                          options={LETTRE_STATUTS.map((s) => ({ value: s, label: LETTRE_LABEL[s] }))}
-                          onChange={(statut) => send("lettre-statut", { entreprise: l.entreprise, statut })}
-                        />
-                      </span>
-                    ) : (
-                      <Badge variant={lettreStatut(l) === "envoyee" ? "success" : "outline"}>
-                        {LETTRE_LABEL[lettreStatut(l)]}
-                        {dirty && l.file === file && <span class="sr-only"> (enregistrez avant de changer le statut)</span>}
-                      </Badge>
-                    )}
-                  </TableCell>
-                  <TableCell class="hidden tabular-nums sm:table-cell">{shortDate(l.date_envoi ?? null)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          {letters.length === 0 && <p class="mt-2 text-sm text-muted-foreground">Aucune lettre.</p>}
-          {free.length === 0 ? (
-            <p class="mt-4 text-sm text-muted-foreground">Aucune entreprise sans lettre. Ajoutez une entreprise ou rouvrez-en une fermée.</p>
-          ) : (
-            <div class="mt-4 flex flex-wrap items-center gap-2">
-              <Select
-                class="w-auto py-0 text-sm sm:h-8"
-                aria-label="Entreprise de la nouvelle lettre"
-                value={pick}
-                onChange={setPick}
-                options={[{ value: "", label: "Choisir une entreprise" }, ...free.map((c) => c.nom)]}
-              />
-              <Button size="sm" disabled={!pick} onClick={add}>
-                Ajouter lettre de motivation
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+        {groups.map(
+          (g) =>
+            (tab === "toutes" ? g.list.length > 0 : tab === g.tab) && (
+              <Card key={g.tab}>
+                <CardHeader>
+                  <CardTitle class="text-base">{g.title}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {g.list.length === 0 ? (
+                    <p class="text-sm text-muted-foreground">Aucune lettre.</p>
+                  ) : (
+                    <LettreList list={g.list} file={file} dirty={dirty} select={select} label={lettreLabel} send={send} />
+                  )}
+                </CardContent>
+              </Card>
+            ),
+        )}
+        {tab === "toutes" && letters.length === 0 && <p class="text-sm text-muted-foreground">Aucune lettre.</p>}
+      </div>
       {selected && (
-        <div ref={detail} tabIndex={-1} class="focus:outline-none">
+        <div ref={detail} tabIndex={-1} class="focus:outline-none lg:sticky lg:top-4 lg:max-h-[calc(100dvh-2rem)] lg:overflow-y-auto">
           <LettreView
             key={`${selected.file}-${selected.statut}-${selected.date_envoi}`}
             lettre={selected}

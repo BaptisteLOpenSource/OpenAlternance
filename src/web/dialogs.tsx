@@ -4,7 +4,6 @@ import { CLOSING_STATUTS, TYPES } from "../logic";
 import type { Agence } from "../repo";
 import { createLettre, lettreOf } from "./commands";
 import { DocumentLinkFields } from "./documents";
-import { ProfilForm } from "./profil";
 import { CONTRAT_OPTIONS, type DialogState, ECHANGE, EchangeBadge, type Send, formFields } from "./shared";
 import type { Action, AppState, PosteEtat } from "./store";
 import { Select } from "./menus";
@@ -20,7 +19,6 @@ const TITLES: Record<Kind, string> = {
   "modifier-echange": "Modifier l'échange",
   lettre: "Nouvelle lettre de motivation",
   document: "Nouveau document",
-  profil: "Mon profil et lettres",
   poste: "Nouveau poste",
   "modifier-poste": "Modifier le poste",
   agence: "Nouvelle agence",
@@ -166,7 +164,6 @@ export function ActionDialog({ dialog, state, send, onClose }: { dialog: DialogS
   const ownForm = () => {
     if (kind === "lettre") return <LettreForm state={state} send={send} company={dialog?.company} onClose={onClose} />;
     if (kind === "document") return <DocumentForm state={state} send={send} company={dialog?.company} onClose={onClose} />;
-    if (kind === "profil") return <ProfilForm profil={state.profil} send={send} onDone={onClose} />;
   };
   return (
     <Dialog open={dialog !== null} onClose={onClose} title={kind ? TITLES[kind] : ""}>

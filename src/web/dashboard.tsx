@@ -1,9 +1,9 @@
 import { BarChart3, ChevronRight, Bell, Building2, Mail, Table2, Trophy } from "lucide-preact";
 import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
-import { STATUTS, type Statut, TYPES, fileName, weeklyCounts } from "../logic";
+import { STATUTS, type Statut, TYPES, weeklyCounts } from "../logic";
 import { BarChart, BarList, DataTable, type Datum } from "./charts";
-import { DeleteEchange, ECHANGE, EchangeBadge, RelanceBadge, STATUT, dotOf, type Open, type Send, StatutBadge, dueTrack, isOpen, relanceEnvoyee, shortDate } from "./shared";
+import { DeleteEchange, ECHANGE, EchangeBadge, RelanceBadge, STATUT, dotOf, isEchange, type Send, StatutBadge, dueTrack, isOpen, relanceEnvoyee, shortDate } from "./shared";
 import type { AppState, CompanyEtat } from "./store";
 import {
   Button,
@@ -88,7 +88,7 @@ function ChartCard({
   );
 }
 
-export function DashboardPage({ state, send, openCompany, onOpen }: { state: AppState; send: Send; openCompany: (id: number) => void; onOpen: Open }) {
+export function DashboardPage({ state, send, openCompany }: { state: AppState; send: Send; openCompany: (id: number) => void }) {
   const { companies, interactions, today } = state;
   const [status, setStatus] = useState("");
   const due = companies.filter(isOpen).sort((a, b) => a.prochaine_relance!.localeCompare(b.prochaine_relance!));
@@ -103,8 +103,8 @@ export function DashboardPage({ state, send, openCompany, onOpen }: { state: App
     today,
     12,
   ).map((w) => ({ label: shortDate(w.week), value: w.count }));
-  const pipeline: Datum[] = STATUTS.map((s) => ({ label: STATUT[s].label, value: count(s), color: dotOf(STATUT[s]) }));
-  const types: Datum[] = TYPES.map((t) => ({ label: ECHANGE[t].label, value: interactions.filter((i) => i.type === t).length, color: dotOf(ECHANGE[t]) }))
+  const pipeline: Datum[] = STATUTS.map((s) => ({ label: STATUT[s].label, value: count(s), color: dotOf(STATUT[s]), icon: STATUT[s].icon }));
+  const types: Datum[] = TYPES.map((t) => ({ label: ECHANGE[t].label, value: interactions.filter((i) => i.type === t).length, color: dotOf(ECHANGE[t]), icon: ECHANGE[t].icon }))
     .filter((d) => d.value > 0)
     .sort((a, b) => b.value - a.value);
 
@@ -188,6 +188,7 @@ export function DashboardPage({ state, send, openCompany, onOpen }: { state: App
             </TableHeader>
             <TableBody>
               {interactions
+                .filter((i) => isEchange(i.type))
                 .slice(-8)
                 .reverse()
                 .map((i) => (
@@ -213,20 +214,6 @@ export function DashboardPage({ state, send, openCompany, onOpen }: { state: App
             </TableBody>
           </Table>
         </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle class="text-base">Nom du PDF de lettre</CardTitle>
-          <CardDescription class="truncate">
-            {fileName(state.profil.nom_fichier, { username: state.profil.username || "Prenom_Nom", entreprise: "Entreprise" })}.pdf
-          </CardDescription>
-          <CardAction>
-            <Button variant="outline" size="sm" onClick={() => onOpen({ kind: "profil" })}>
-              Modifier
-            </Button>
-          </CardAction>
-        </CardHeader>
       </Card>
     </div>
   );

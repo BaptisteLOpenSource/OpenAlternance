@@ -103,8 +103,8 @@ export function DashboardPage({ state, send, openCompany, onOpen }: { state: App
     today,
     12,
   ).map((w) => ({ label: shortDate(w.week), value: w.count }));
-  const pipeline: Datum[] = STATUTS.map((s) => ({ label: STATUT[s].label, value: count(s), color: dotOf(STATUT[s]) }));
-  const types: Datum[] = TYPES.map((t) => ({ label: ECHANGE[t].label, value: interactions.filter((i) => i.type === t).length, color: dotOf(ECHANGE[t]) }))
+  const pipeline: Datum[] = STATUTS.map((s) => ({ label: STATUT[s].label, value: count(s), color: dotOf(STATUT[s]), icon: STATUT[s].icon }));
+  const types: Datum[] = TYPES.map((t) => ({ label: ECHANGE[t].label, value: interactions.filter((i) => i.type === t).length, color: dotOf(ECHANGE[t]), icon: ECHANGE[t].icon }))
     .filter((d) => d.value > 0)
     .sort((a, b) => b.value - a.value);
 

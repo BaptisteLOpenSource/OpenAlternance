@@ -51,6 +51,11 @@ const INTERACTION_COLUMNS = [
   "auto TEXT",
 ];
 
+const DOCUMENT_COLUMNS = [
+  "company_id INTEGER REFERENCES companies(id) ON DELETE SET NULL",
+  "interaction_id INTEGER REFERENCES interactions(id) ON DELETE SET NULL",
+];
+
 export function schema(d: Dialect): string[] {
   const pg = d === "postgres";
   const ID = pg ? "INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY" : "INTEGER PRIMARY KEY AUTOINCREMENT";
@@ -132,7 +137,8 @@ export function schema(d: Dialect): string[] {
     `CREATE TABLE IF NOT EXISTS documents (
     name TEXT PRIMARY KEY,
     format TEXT NOT NULL,
-    content TEXT NOT NULL
+    content TEXT NOT NULL,
+    ${DOCUMENT_COLUMNS.join(",\n    ")}
   )`,
     `CREATE TABLE IF NOT EXISTS fichiers (
     name TEXT PRIMARY KEY,
@@ -200,6 +206,7 @@ export async function migrate(): Promise<void> {
   // Desktop never runs setup(): the letter template must ship with the schema.
   await sql`INSERT INTO lettres (file, content) VALUES ('_template.md', ${template}) ON CONFLICT (file) DO NOTHING`;
   for (const column of INTERACTION_COLUMNS) await addColumn("interactions", column);
+  for (const column of DOCUMENT_COLUMNS) await addColumn("documents", column);
   await sql`INSERT INTO postes (company_id, intitule, annonce, publication, candidatures, reponses)
     SELECT id, poste, annonce, publication, candidatures, reponses FROM companies
     WHERE poste IS NOT NULL AND poste <> '' AND id NOT IN (SELECT company_id FROM postes)`;

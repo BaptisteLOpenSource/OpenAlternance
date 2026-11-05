@@ -243,7 +243,7 @@ function Sidebar({
             items={[
               { label: "Nouvelle entreprise", run: () => onOpen({ kind: "entreprise" }) },
               { label: "Nouvelle lettre de motivation", run: () => onOpen({ kind: "lettre" }) },
-              { label: "Nouveau document (PDF, TXT, Markdown)", run: () => onOpen({ kind: "document" }) },
+              { label: "Nouveau document (PDF, Word, ODT, Markdown, TXT)", run: () => onOpen({ kind: "document" }) },
             ]}
           />
           {onLogout && <div class="relative" onFocusOut={(e) => !e.currentTarget.contains(e.relatedTarget as Node) && setMenu(false)}>

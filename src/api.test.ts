@@ -282,7 +282,7 @@ describe("base de test (TEST_DATABASE_URL)", () => {
     const res = await auth("/api/document-pdf", { method: "POST", body: JSON.stringify({ titre: "docpdftest", data: PDF_B64 }) });
     expect(res.status).toBe(200);
     const state = (await res.json()) as { documents: { name: string; format: string }[]; pdfs: string[] };
-    expect(state.documents).toContainEqual({ name: "docpdftest.pdf", format: "pdf" });
+    expect(state.documents).toContainEqual(expect.objectContaining({ name: "docpdftest.pdf", format: "pdf" }));
     expect(state.pdfs).not.toContain("docpdftest.pdf");
     expect(state.pdfs).not.toContain("doc-docpdftest.pdf");
     expect(await repo.hasFichier("docpdftest.pdf")).toBe(false);
@@ -313,6 +313,31 @@ describe("base de test (TEST_DATABASE_URL)", () => {
     await auth("/api/document-supprimer", { method: "POST", body: JSON.stringify({ name: "docpdftest.pdf" }) });
     expect((await auth("/api/fichiers/docpdftest.pdf")).status).toBe(404);
     expect(await repo.hasFichier("doc-docpdftest.pdf")).toBe(false);
+  });
+
+  test("document Word: texte extrait, lié à une entreprise puis à un échange, délié", async () => {
+    const { textPdf, zip } = await import("./test-files");
+    const created = await auth("/api/entreprise", { method: "POST", body: JSON.stringify({ nom: "TEST-doclien" }) });
+    const company = ((await created.json()) as { companies: { id: number; nom: string }[] }).companies.find((c) => c.nom === "TEST-doclien")!;
+    const data = Buffer.from(zip("word/document.xml", "<w:p><w:r><w:t>Bonjour</w:t></w:r></w:p>")).toString("base64");
+    const res = await auth("/api/document-office", { method: "POST", body: JSON.stringify({ titre: "docwordtest", data, company: String(company.id) }) });
+    expect(res.status).toBe(200);
+    type Doc = { name: string; format: string; company_id: number | null; interaction_id: number | null };
+    const state = (await res.json()) as { documents: Doc[]; interactions: { id: number; company_id: number }[] };
+    expect(state.documents).toContainEqual({ name: "docwordtest.html", format: "html", company_id: company.id, interaction_id: null });
+    await auth("/api/echange", { method: "POST", body: JSON.stringify({ entreprise: "TEST-doclien", type: "mail", date: "2026-01-02" }) });
+    const echange = await sql<{ id: number }[]>`SELECT id FROM interactions WHERE company_id = ${company.id} AND type = 'mail'`;
+    const linked = await auth("/api/document-lier", { method: "POST", body: JSON.stringify({ name: "docwordtest.html", echange: String(echange[0].id) }) });
+    expect(((await linked.json()) as { documents: Doc[] }).documents.find((d) => d.name === "docwordtest.html")).toMatchObject({ company_id: company.id, interaction_id: echange[0].id });
+    const pdf = await auth("/api/document-pdf", { method: "POST", body: JSON.stringify({ titre: "docpdflien", data: Buffer.from(textPdf("Bonjour")).toString("base64"), echange: String(echange[0].id) }) });
+    expect(pdf.status).toBe(200);
+    expect((await auth("/api/document-texte", { method: "POST", body: JSON.stringify({ name: "docpdflien.pdf" }) })).status).toBe(200);
+    expect(await repo.readDocument("docpdflien.html")).toMatchObject({ company_id: company.id, interaction_id: echange[0].id });
+    for (const name of ["docpdflien.pdf", "docpdflien.html"]) await auth("/api/document-supprimer", { method: "POST", body: JSON.stringify({ name }) });
+    const unlinked = await auth("/api/document-lier", { method: "POST", body: JSON.stringify({ name: "docwordtest.html" }) });
+    expect(((await unlinked.json()) as { documents: Doc[] }).documents.find((d) => d.name === "docwordtest.html")).toMatchObject({ company_id: null, interaction_id: null });
+    await auth("/api/document-supprimer", { method: "POST", body: JSON.stringify({ name: "docwordtest.html" }) });
+    await auth("/api/entreprise-supprimer", { method: "POST", body: JSON.stringify({ entreprise: "TEST-doclien" }) });
   });
 
   test("CV: non PDF -> 400, rien écrit", async () => {

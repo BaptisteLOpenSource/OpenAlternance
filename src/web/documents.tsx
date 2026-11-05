@@ -1,9 +1,42 @@
 import { Trash2 } from "lucide-preact";
 import { useEffect, useState } from "preact/hooks";
 import type { DocumentRow } from "../repo";
-import type { Send } from "./shared";
+import { Select } from "./menus";
+import { ECHANGE, type Send } from "./shared";
 import { type AppState, fetchDocument } from "./store";
-import { Badge, Button, Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, cn } from "./ui";
+import { Badge, Button, Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle, Label, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, cn } from "./ui";
+
+export const echangeLabel = (state: AppState, id: number | null) => {
+  const echange = state.interactions.find((i) => i.id === id);
+  const tag = echange && ECHANGE[echange.type as keyof typeof ECHANGE];
+  return echange && tag ? `${tag.label} du ${echange.date}` : "";
+};
+
+// Hidden inputs named company/echange: works inside a form and standalone.
+export function DocumentLinkFields({ state, company, echange, onChange }: { state: AppState; company: string; echange: string; onChange: (company: string, echange: string) => void }) {
+  const echanges = state.interactions.filter((i) => String(i.company_id) === company && i.type in ECHANGE);
+  return (
+    <>
+      <Label label="Entreprise liée (optionnel)">
+        <Select name="company" value={company} onChange={(v) => onChange(v, "")} options={[{ value: "", label: "Aucune" }, ...state.companies.map((c) => ({ value: String(c.id), label: c.nom }))]} />
+      </Label>
+      {company && (
+        <Label label="Échange lié (optionnel)">
+          <Select name="echange" value={echange} onChange={(v) => onChange(company, v)} options={[{ value: "", label: "Aucun" }, ...echanges.map((i) => ({ value: String(i.id), label: echangeLabel(state, i.id) }))]} />
+        </Label>
+      )}
+    </>
+  );
+}
+
+function DocumentLink({ doc, state, send }: { doc: DocumentRow; state: AppState; send: Send }) {
+  const link = (company: string, echange: string) => send("document-lier", { name: doc.name, company, echange });
+  return (
+    <div class="mb-4 grid gap-4 sm:grid-cols-2">
+      <DocumentLinkFields state={state} company={doc.company_id ? String(doc.company_id) : ""} echange={doc.interaction_id ? String(doc.interaction_id) : ""} onChange={link} />
+    </div>
+  );
+}
 
 type View = "apercu" | "edition";
 
@@ -12,7 +45,7 @@ const removeDocument = async (doc: DocumentRow, send: Send) => {
 };
 
 // PDF shown by the browser's native viewer; no text is read, so nothing to edit here.
-function PdfView({ doc, send }: { doc: DocumentRow; send: Send }) {
+function PdfView({ doc, state, send }: { doc: DocumentRow; state: AppState; send: Send }) {
   const href = `/api/fichiers/${encodeURIComponent(doc.name)}`;
   const convert = async () => {
     if (await send("document-texte", { name: doc.name })) location.hash = `#/documents/${encodeURIComponent(doc.name.replace(/\.pdf$/, ".html"))}`;
@@ -38,6 +71,7 @@ function PdfView({ doc, send }: { doc: DocumentRow; send: Send }) {
         </CardAction>
       </CardHeader>
       <CardContent>
+        <DocumentLink doc={doc} state={state} send={send} />
         <iframe title={`Aperçu ${doc.name}`} src={href} class="h-[70vh] w-full rounded-lg border" />
       </CardContent>
     </Card>
@@ -45,7 +79,7 @@ function PdfView({ doc, send }: { doc: DocumentRow; send: Send }) {
 }
 
 // Preview is the sandboxed render (no script). Edition only for md/txt; html is text extracted from a PDF.
-function DocumentView({ doc, send }: { doc: DocumentRow; send: Send }) {
+function DocumentView({ doc, state, send }: { doc: DocumentRow; state: AppState; send: Send }) {
   const [data, setData] = useState<{ content: string; html: string } | null>(null);
   const [draft, setDraft] = useState("");
   const [view, setView] = useState<View>("apercu");
@@ -93,6 +127,7 @@ function DocumentView({ doc, send }: { doc: DocumentRow; send: Send }) {
         </CardAction>
       </CardHeader>
       <CardContent>
+        <DocumentLink doc={doc} state={state} send={send} />
         {error ? (
           <p role="alert" class="text-sm text-destructive">
             Document indisponible : {error}
@@ -138,6 +173,7 @@ export function DocumentsPage({ state, send, selected }: { state: AppState; send
                 <TableRow>
                   <TableHead>Nom</TableHead>
                   <TableHead>Format</TableHead>
+                  <TableHead>Lié à</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -151,6 +187,14 @@ export function DocumentsPage({ state, send, selected }: { state: AppState; send
                     <TableCell>
                       <Badge variant="outline">{d.format.toUpperCase()}</Badge>
                     </TableCell>
+                    <TableCell class="text-muted-foreground">
+                      {d.company_id && (
+                        <a href={`#/entreprises/${d.company_id}`} class="hover:underline" onClick={(e) => e.stopPropagation()}>
+                          {state.companies.find((c) => c.id === d.company_id)?.nom}
+                        </a>
+                      )}
+                      {d.interaction_id && ` · ${echangeLabel(state, d.interaction_id)}`}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -158,7 +202,7 @@ export function DocumentsPage({ state, send, selected }: { state: AppState; send
           )}
         </CardContent>
       </Card>
-      {doc && (doc.format === "pdf" ? <PdfView key={doc.name} doc={doc} send={send} /> : <DocumentView key={doc.name} doc={doc} send={send} />)}
+      {doc && (doc.format === "pdf" ? <PdfView key={doc.name} doc={doc} state={state} send={send} /> : <DocumentView key={doc.name} doc={doc} state={state} send={send} />)}
     </div>
   );
 }

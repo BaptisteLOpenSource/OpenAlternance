@@ -3,7 +3,7 @@ import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
 import { STATUTS, type Statut, TYPES, fileName, weeklyCounts } from "../logic";
 import { BarChart, BarList, DataTable, type Datum } from "./charts";
-import { DeleteEchange, ECHANGE, EchangeBadge, RelanceBadge, STATUT, dotOf, type Open, type Send, StatutBadge, dueTrack, isOpen, relanceEnvoyee, shortDate } from "./shared";
+import { DeleteEchange, ECHANGE, EchangeBadge, RelanceBadge, STATUT, dotOf, isEchange, type Open, type Send, StatutBadge, dueTrack, isOpen, relanceEnvoyee, shortDate } from "./shared";
 import type { AppState, CompanyEtat } from "./store";
 import {
   Button,
@@ -188,6 +188,7 @@ export function DashboardPage({ state, send, openCompany, onOpen }: { state: App
             </TableHeader>
             <TableBody>
               {interactions
+                .filter((i) => isEchange(i.type))
                 .slice(-8)
                 .reverse()
                 .map((i) => (

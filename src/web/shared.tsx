@@ -38,7 +38,7 @@ export const LETTRE_LABEL: Record<LettreStatut, string> = { brouillon: "Brouillo
 export const lettreStatut = (lettre: Lettre): LettreStatut => (lettre.statut === "envoyee" ? "envoyee" : "brouillon");
 
 // Semantic tone: success = positive, warning = waiting, destructive = negative, info = standard action.
-type Tag = { label: string; variant: BadgeVariant; icon: typeof Mail };
+export type Tag = { label: string; variant: BadgeVariant; icon: typeof Mail };
 const DOT: Record<BadgeVariant, string> = {
   default: "bg-primary",
   secondary: "bg-foreground",
@@ -82,8 +82,8 @@ export const TagBadge = ({ tag, class: className }: { tag: Tag; class?: string }
     {tag.label}
   </Badge>
 );
-export const EchangeBadge = ({ type }: { type: string }) =>
-  type in ECHANGE ? <TagBadge tag={ECHANGE[type as (typeof TYPES)[number]]} /> : <Badge variant="outline">{type}</Badge>;
+export const isEchange = (type: string): type is (typeof TYPES)[number] => type in ECHANGE;
+export const EchangeBadge = ({ type }: { type: string }) => (isEchange(type) ? <TagBadge tag={ECHANGE[type]} /> : null);
 
 export const formFields = (form: HTMLFormElement) =>
   Object.fromEntries([...new FormData(form)].map(([k, v]) => [k, typeof v === "string" ? v : v.name]));

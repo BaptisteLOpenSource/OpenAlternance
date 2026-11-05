@@ -1,11 +1,11 @@
 import { ArrowLeft, Building2, ExternalLink, FileCheck, FileText, Globe, Image as ImageIcon, Mail, MapPin, Mailbox, Newspaper, Pencil, Phone, Plus, Star, Tag, Trash2, UserPlus, Users } from "lucide-preact";
 import type { ComponentChildren } from "preact";
 import { useEffect, useState } from "preact/hooks";
-import { CLOSING_STATUTS, FICHE_TEXTES, MAIL_CANAUX, SUIVIS, SUIVI_TYPES, isWebUrl } from "../logic";
+import { CLOSING_STATUTS, FICHE_TEXTES, MAIL_CANAUX, SUIVIS, isWebUrl } from "../logic";
 import type { CompanyRow, Interaction, Lettre } from "../repo";
 import { deleteLettre, lettreOf, openLettre } from "./commands";
 import { Select } from "./menus";
-import { CONTRAT_LABEL, CopyButton, DeleteEchange, EchangeBadge, LettreStatutControl, dotOf, type Open, RelanceBadge, ficheOf, RelanceControls, STATUT, type Send, StatutSelect, isOpen, sendFiche, shortDate } from "./shared";
+import { CONTRAT_LABEL, CopyButton, DeleteEchange, EchangeBadge, LettreStatutControl, dotOf, type Open, RelanceBadge, ficheOf, RelanceControls, STATUT, type Send, StatutSelect, isEchange, isOpen, sendFiche, shortDate } from "./shared";
 import { type AppState, type Fiches, fetchLettre } from "./store";
 import { Badge, Button, Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle, cn } from "./ui";
 
@@ -162,7 +162,6 @@ export function CompanyPage({
   const agences = state.agences.filter((a) => a.company_id === id);
   const visibles = filtre === "" ? history : history.filter((i) => (filtre === "spontanee" ? i.poste_id === null : i.poste_id === Number(filtre)));
   const agenceVille = (agenceId: number | null) => agences.find((a) => a.id === agenceId)?.ville ?? company.ville ?? "Siège";
-  const estSuivi = (type: string) => (SUIVI_TYPES as readonly string[]).includes(type);
   const status = etat(company);
   const lettre = lettreOf(company, state);
   const cover =
@@ -404,14 +403,14 @@ export function CompanyPage({
                     <span aria-hidden="true" class="absolute -left-[1.3rem] top-1.5 size-2 rounded-full bg-primary" />
                     <div>
                       <p>
-                        {estSuivi(i.type) ? <span class="font-medium">{suiviLabel(i)}</span> : <EchangeBadge type={i.type} />}{" "}
+                        {!isEchange(i.type) ? <span class="font-medium">{suiviLabel(i)}</span> : <EchangeBadge type={i.type} />}{" "}
                         <span class="tabular-nums text-muted-foreground">{shortDate(i.date)}</span>
                         {i.poste_id !== null && <Badge variant="outline" class="ml-2">{postes.find((p) => p.id === i.poste_id)?.intitule}</Badge>}
                       </p>
                       {i.note && <p class="text-muted-foreground">{i.note}</p>}
                     </div>
                     <div class="flex shrink-0">
-                      {!estSuivi(i.type) && (
+                      {isEchange(i.type) && (
                         <Button variant="ghost" size="icon-sm" aria-label="Modifier l'échange" onClick={() => onOpen({ kind: "modifier-echange", company: company.nom, id: i.id })}>
                           <Pencil />
                         </Button>

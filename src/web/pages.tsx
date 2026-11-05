@@ -1,8 +1,9 @@
-import { ChevronLeft, ChevronRight, Download, Trash2, X } from "lucide-preact";
+import { ChevronLeft, ChevronRight, Printer, Save, Trash2, X } from "lucide-preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
-import { CLOSING_STATUTS, LETTRE_STATUTS, type Profil, MOIS_MIN, escapeHtml, fileName, toIso } from "../logic";
+import { CLOSING_STATUTS, LETTRE_STATUTS, type Profil, MOIS_MIN, escapeHtml, fileName, parseFrontmatter, placeholders, setFrontmatter, stripFrontmatter, toIso } from "../logic";
 import type { Lettre } from "../repo";
 import { createLettre, deleteLettre, lettreOf } from "./commands";
+import { Toggle, VariablesPanel, VisualEditor } from "./lettre";
 import { Select } from "./menus";
 import { CopyButton, LETTRE_LABEL, ECHANGE, LettreStatutControl, type Send, TagBadge, type Tag, dotOf, isEchange, isOpen, lettreStatut, shortDate } from "./shared";
 import { type AppState, fetchLettre, fetchLogo } from "./store";
@@ -194,19 +195,25 @@ strong { font-weight: 700 }
 .sheet > p:nth-of-type(5) { margin: 0 0 2.2em 2mm; padding-bottom: 3mm; border-bottom: 1.5px solid #111; font-size: 9pt; font-weight: 400 }
 .sheet > p:last-child { display: flex; justify-content: space-between; align-items: flex-end; margin: auto 0 0 }
 .sheet > p:last-child::after { content: ""; width: 75mm; border-bottom: 1.5px solid #111 }
+h2 { margin: 1.2em 0 .5em; font-size: 12pt; font-weight: 700 }
+ul, ol { margin: 0 0 1.1em; padding-left: 1.4em }
+blockquote { margin: 0 0 1.1em; padding: .6em 1em; border-left: 3px solid #111; background: #f4f4f5 }
+blockquote p { margin: 0 }
+a { color: inherit }
 @media screen and (max-width: 820px) { .sheet { width: auto; min-height: 0 } }
 @media print { html { background: none } body { padding: 0 } .sheet { margin: 0; box-shadow: none } }
 </style><script>onmessage = (e) => e.data === "print" && print()</script></head><body><div class="sheet">${logo && `<img class="logo" src="${logo}" alt="">`}${body}</div></body></html>`;
 
-// Rendered markdown, no scripts: html comes from the editable .md file.
-const proseDoc = (body: string) => `<!doctype html><html lang="fr"><head><meta charset="utf-8"><style>
-body { margin: 0; padding: 16px; font: 14px/1.6 system-ui, sans-serif; color: #111; background: #fff }
-p { margin: 0 0 1em; white-space: pre-line } h1 { font-size: 1.3em }
-@media (prefers-color-scheme: dark) { body { color: #e4e4e7; background: #18181b } }
-</style></head><body>${body}</body></html>`;
-
-type View = "pdf" | "md" | "texte";
-const VIEW_LABEL: Record<View, string> = { pdf: "Aperçu PDF", md: "Markdown", texte: "Texte" };
+type View = "pdf" | "visuel" | "md";
+const VIEW_LABEL: Record<View, string> = { pdf: "Aperçu PDF", visuel: "Visuel", md: "Markdown" };
+const META_KEY = "lettre-meta";
+const readMeta = () => {
+  try {
+    return localStorage.getItem(META_KEY) === "1";
+  } catch {
+    return false;
+  }
+};
 
 function LettreView({ lettre, send, onTemplate, profil, onDirty }: { lettre: Lettre; send: Send; onTemplate: () => void; profil: Profil; onDirty: (dirty: boolean) => void }) {
   const [data, setData] = useState<{ content: string; html: string } | null>(null);
@@ -214,7 +221,9 @@ function LettreView({ lettre, send, onTemplate, profil, onDirty }: { lettre: Let
   const [view, setView] = useState<View>("pdf");
   const [logo, setLogo] = useState("");
   const [error, setError] = useState("");
+  const [showMeta, setShowMeta] = useState(readMeta);
   const frame = useRef<HTMLIFrameElement>(null);
+  const printNext = useRef(false);
   // Error stays out of data: a failed load must never reach the editor or Enregistrer.
   const load = () =>
     fetchLettre(lettre.file).then(
@@ -231,11 +240,34 @@ function LettreView({ lettre, send, onTemplate, profil, onDirty }: { lettre: Let
   const editable = isTemplate || lettre.type === "lettre";
   const dirty = !!data && draft !== data.content.trimEnd();
   useEffect(() => onDirty(dirty), [dirty]);
-  const save = async () => {
-    if (!dirty) return true;
-    const saved = (isTemplate ? await send("template", { content: draft }) : await send("lettre", { file: lettre.file, content: draft })) !== false;
+  const save = async (content = draft) => {
+    if (!data || content === data.content.trimEnd()) return true;
+    setDraft(content);
+    const saved = (isTemplate ? await send("template", { content }) : await send("lettre", { file: lettre.file, content })) !== false;
     if (saved) load();
     return saved;
+  };
+  const body = stripFrontmatter(draft);
+  const head = draft.slice(0, draft.length - body.length);
+  const withBody = (md: string) => (head ? `${head}\n${md}` : md);
+  const fields = parseFrontmatter(draft);
+  const logoOn = fields.logo !== "masque";
+  const missing = isTemplate ? [] : placeholders(draft);
+  // Visual and PDF render the saved html, so a pending edit is saved before switching.
+  const switchView = async (next: View) => {
+    if (next === view || !(await save())) return;
+    setView(next);
+  };
+  const print = () => {
+    if (view === "pdf") return frame.current?.contentWindow?.postMessage("print", "*");
+    printNext.current = true;
+    switchView("pdf");
+  };
+  const toggleMeta = (on: boolean) => {
+    setShowMeta(on);
+    try {
+      localStorage.setItem(META_KEY, on ? "1" : "0");
+    } catch {}
   };
   const text = useMemo(
     () => (data ? (new DOMParser().parseFromString(data.html, "text/html").body.textContent ?? "").trim() : ""),
@@ -253,29 +285,60 @@ function LettreView({ lettre, send, onTemplate, profil, onDirty }: { lettre: Let
   const remove = async () => {
     if (await deleteLettre(lettre, send)) location.hash = "#/lettres";
   };
+  const name = lettre.entreprise || lettre.file;
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle class="text-base">{lettre.entreprise || lettre.file}</CardTitle>
-        <CardDescription class="truncate">{lettre.type === "lettre" ? `${title}.pdf` : "Modèle de lettre"}</CardDescription>
+    <Card class="gap-0">
+      <CardHeader class="pb-4">
+        <CardTitle class="text-base">{name}</CardTitle>
+        <CardDescription class="flex flex-wrap items-center gap-2">
+          {dirty ? (
+            <span role="status" class="text-xs text-warning">
+              Non enregistré
+            </span>
+          ) : (
+            <span class="text-xs">Enregistré</span>
+          )}
+          {showMeta && (
+            <span class="font-mono text-xs">
+              lettres/{lettre.file}
+              {Object.entries(fields)
+                .map(([k, v]) => ` · ${k}: ${v}`)
+                .join("")}
+            </span>
+          )}
+        </CardDescription>
         <CardAction class="flex flex-wrap items-center gap-2">
-          <div class="flex rounded-md border p-0.5" role="group" aria-label="Affichage de la lettre">
-            {(["pdf", "md", "texte"] as const).map((v) => (
-              <Button variant={view === v ? "secondary" : "ghost"} size="sm" class="sm:h-7" aria-pressed={view === v} onClick={() => setView(v)}>
-                {VIEW_LABEL[v]}
-              </Button>
-            ))}
-          </div>
-          {dirty && <span role="status" class="text-xs text-warning">Non enregistré</span>}
           {lettre.type === "lettre" && !!lettre.entreprise && <LettreStatutControl lettre={lettre} send={send} dirty={dirty} onSave={save} />}
-          {view === "md" && editable && (
-            <Button size="sm" disabled={!dirty} onClick={save}>
+          {editable && (
+            <Button size="sm" variant="outline" disabled={!dirty} onClick={() => save()}>
+              <Save />
               Enregistrer
             </Button>
           )}
-          {view === "texte" && <CopyButton value={text} />}
-          {view !== "pdf" && !isTemplate && (
-            <Button variant="outline" size="sm" onClick={onTemplate}>
+          <Button size="sm" disabled={!data} onClick={print}>
+            <Printer />
+            Imprimer
+          </Button>
+          <Button variant="ghost" size="icon-sm" aria-label="Fermer l'aperçu" onClick={() => (location.hash = "#/lettres")}>
+            <X />
+          </Button>
+        </CardAction>
+      </CardHeader>
+      <div class="flex flex-wrap items-center justify-between gap-3 border-y bg-muted/30 px-6 py-2">
+        <div class="flex rounded-md border bg-background p-0.5" role="group" aria-label="Mode d'affichage">
+          {(["pdf", "visuel", "md"] as const).map((v) => (
+            <Button key={v} variant={view === v ? "default" : "ghost"} size="sm" class="sm:h-7" aria-pressed={view === v} onClick={() => switchView(v)}>
+              {VIEW_LABEL[v]}
+            </Button>
+          ))}
+        </div>
+        <div class="flex flex-wrap items-center gap-4">
+          {editable && <Toggle label="Logo" checked={logoOn} onChange={(on) => save(setFrontmatter(draft, { logo: on ? "" : "masque" }))} />}
+          <Toggle label="Métadonnées" checked={showMeta} onChange={toggleMeta} />
+          <span class="h-5 w-px bg-border" />
+          <CopyButton value={text} />
+          {!isTemplate && (
+            <Button variant="ghost" size="sm" onClick={onTemplate}>
               Template
             </Button>
           )}
@@ -284,16 +347,9 @@ function LettreView({ lettre, send, onTemplate, profil, onDirty }: { lettre: Let
               <Trash2 />
             </Button>
           )}
-          <Button variant="ghost" size="icon-sm" aria-label="Fermer l'aperçu" onClick={() => (location.hash = "#/lettres")}>
-            <X />
-          </Button>
-          <Button size="sm" disabled={!data} onClick={() => (view === "pdf" ? frame.current?.contentWindow?.postMessage("print", "*") : setView("pdf"))}>
-            <Download />
-            {view === "pdf" ? "Imprimer" : "Aperçu PDF"}
-          </Button>
-        </CardAction>
-      </CardHeader>
-      <CardContent>
+        </div>
+      </div>
+      <CardContent class="pt-4">
         {error ? (
           <p role="alert" class="text-sm text-destructive">
             Lettre indisponible : {error}
@@ -301,30 +357,50 @@ function LettreView({ lettre, send, onTemplate, profil, onDirty }: { lettre: Let
         ) : !data ? (
           <p class="text-sm text-muted-foreground">Chargement...</p>
         ) : view === "pdf" ? (
-          <iframe
-            ref={frame}
-            title={`Aperçu PDF ${lettre.entreprise}`}
-            sandbox="allow-scripts allow-modals"
-            srcdoc={letterDoc(title, data.html, logo)}
-            class="h-[75dvh] w-full rounded-lg border md:h-[calc(297mm+32px)]"
-          />
-        ) : view === "md" ? (
-          <textarea
-            class="min-h-[60vh] w-full resize-y rounded-lg border bg-muted/40 p-4 font-mono text-sm leading-relaxed outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            value={draft}
-            readOnly={!editable}
-            aria-label={`Markdown ${lettre.entreprise || lettre.file}`}
-            onInput={(e) => setDraft(e.currentTarget.value)}
-            onBlur={save}
-            onKeyDown={(e) => {
-              if ((e.ctrlKey || e.metaKey) && e.key === "s") {
-                e.preventDefault();
-                save();
-              }
-            }}
-          />
+          <div class="grid gap-2">
+            {missing.length > 0 && (
+              <p role="status" class="text-sm text-warning">
+                {missing.length} variable(s) à compléter avant envoi.{" "}
+                <button type="button" class="underline underline-offset-4" onClick={() => switchView("visuel")}>
+                  Compléter
+                </button>
+              </p>
+            )}
+            <iframe
+              ref={frame}
+              title={`Aperçu PDF ${lettre.entreprise}`}
+              sandbox="allow-scripts allow-modals"
+              srcdoc={letterDoc(title, data.html, logoOn ? logo : "")}
+              onLoad={() => {
+                if (!printNext.current) return;
+                printNext.current = false;
+                frame.current?.contentWindow?.postMessage("print", "*");
+              }}
+              class="h-[75dvh] w-full rounded-lg border md:h-[calc(297mm+32px)]"
+            />
+          </div>
         ) : (
-          <iframe title={`Texte ${lettre.entreprise || lettre.file}`} sandbox="" srcdoc={proseDoc(data.html)} class="h-[60vh] w-full rounded-lg border" />
+          <div class={cn("grid gap-4", editable && !isTemplate && "lg:grid-cols-[1fr_18rem]")}>
+            {view === "visuel" ? (
+              <VisualEditor key={data.html} html={data.html} label={`Lettre ${name}`} readOnly={!editable} onChange={(md) => setDraft(withBody(md))} onSave={() => save()} />
+            ) : (
+              <textarea
+                class="min-h-[60vh] w-full resize-y rounded-lg border bg-muted/40 p-4 font-mono text-sm leading-relaxed outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                value={showMeta ? draft : body.replace(/^\n/, "")}
+                readOnly={!editable}
+                aria-label={`Markdown ${name}`}
+                onInput={(e) => setDraft(showMeta ? e.currentTarget.value : withBody(e.currentTarget.value))}
+                onBlur={() => save()}
+                onKeyDown={(e) => {
+                  if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+                    e.preventDefault();
+                    save();
+                  }
+                }}
+              />
+            )}
+            {editable && !isTemplate && <VariablesPanel content={draft} onChange={save} />}
+          </div>
         )}
       </CardContent>
     </Card>

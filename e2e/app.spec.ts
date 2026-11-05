@@ -358,3 +358,19 @@ test("fusion: dialogue -> POST /api/entreprise-fusionner {source, cible}", async
   await page.getByRole("dialog").getByRole("button", { name: "Enregistrer" }).click();
   await expect.poll(() => mock.calls.find((c) => c.path === "/api/entreprise-fusionner")?.body).toEqual({ source: "MGDIS", cible: "Grizzlead" });
 });
+
+test("lettre visuelle: gras via la barre d'outils -> markdown enregistré", async ({ page }) => {
+  const mock: Mock = { loggedIn: true, calls: [] };
+  await mockApi(page, mock);
+  await page.goto("/#/lettres/mgdis.md");
+  await page.getByRole("button", { name: "Visuel" }).click();
+  const editor = page.getByRole("textbox", { name: "Lettre MGDIS" });
+  await editor.click();
+  await page.keyboard.press("End");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("Salut");
+  await page.keyboard.press("Shift+Home");
+  await page.getByRole("button", { name: "Gras" }).click();
+  await page.getByRole("button", { name: "Enregistrer" }).click();
+  await expect.poll(() => mock.calls.find((c) => c.path === "/api/lettre")?.body).toEqual({ file: "mgdis.md", content: "# Bonjour\n\n**Salut**" });
+});

@@ -25,7 +25,8 @@ import {
 const SAFE_NAME = /^[\w.-]+\.md$/;
 const SAFE_DOCUMENT = /^[\w.-]+\.(md|txt|html|pdf)$/;
 
-export type DocumentRow = { name: string; format: DocFormat };
+export type DocumentRow = { name: string; format: DocFormat; company_id: number | null; interaction_id: number | null };
+export type DocumentLink = { companyId?: number; interactionId?: number };
 const TEMPLATE_FILE = "_template.md";
 
 export type Lettre = { file: string; type: string; entreprise: string; statut: string; date_envoi?: string; poste?: number };
@@ -419,6 +420,7 @@ export async function mergeCompanies(sourceNom: string, targetNom: string): Prom
     await tx`UPDATE interactions SET company_id = ${target.id} WHERE company_id = ${source.id}`;
     await tx`UPDATE postes SET company_id = ${target.id} WHERE company_id = ${source.id}`;
     await tx`UPDATE agences SET company_id = ${target.id} WHERE company_id = ${source.id}`;
+    await tx`UPDATE documents SET company_id = ${target.id} WHERE company_id = ${source.id}`;
     const notes = [target.notes, source.notes].filter(Boolean).join("\n\n") || null;
     await tx`UPDATE companies SET notes = ${notes} WHERE id = ${target.id}`;
     await setLettresEntreprise(tx, letters, target.nom);
@@ -604,20 +606,40 @@ export async function readFichier(name: string): Promise<Uint8Array | null> {
 }
 
 export async function listDocuments(): Promise<DocumentRow[]> {
-  return sql<DocumentRow[]>`SELECT name, format FROM documents ORDER BY name`;
+  return sql<DocumentRow[]>`SELECT name, format, company_id, interaction_id FROM documents ORDER BY name`;
 }
 
-export async function readDocument(name: string): Promise<{ format: DocFormat; content: string } | null> {
+type StoredDocument = DocumentRow & { content: string };
+
+export async function readDocument(name: string): Promise<StoredDocument | null> {
   if (!SAFE_DOCUMENT.test(name)) return null;
-  const [row] = await sql<{ format: DocFormat; content: string }[]>`SELECT format, content FROM documents WHERE name = ${name}`;
+  const [row] = await sql<StoredDocument[]>`SELECT name, format, content, company_id, interaction_id FROM documents WHERE name = ${name}`;
   return row ?? null;
 }
 
+// An échange carries its company: link stays consistent whatever the caller sends.
+async function resolveLink({ companyId, interactionId }: DocumentLink) {
+  if (interactionId) {
+    const [echange] = await sql<{ company_id: number }[]>`SELECT company_id FROM interactions WHERE id = ${interactionId}`;
+    if (!echange) throw new Error(`échange introuvable: ${interactionId}`);
+    return { company_id: echange.company_id, interaction_id: interactionId };
+  }
+  if (companyId && (await sql`SELECT 1 FROM companies WHERE id = ${companyId}`).length === 0) throw new Error(`entreprise introuvable: ${companyId}`);
+  return { company_id: companyId ?? null, interaction_id: null };
+}
+
+export async function linkDocument(name: string, link: DocumentLink): Promise<void> {
+  const { company_id, interaction_id } = await resolveLink(link);
+  const [updated] = await sql<{ name: string }[]>`UPDATE documents SET company_id = ${company_id}, interaction_id = ${interaction_id} WHERE name = ${name} RETURNING name`;
+  if (!updated) throw new Error(`Document introuvable: ${name}`);
+}
+
 // Values go through tagged parameters only: no string built into SQL.
-export async function addDocument(name: string, format: DocFormat, content: string): Promise<void> {
+export async function addDocument(name: string, format: DocFormat, content: string, link: DocumentLink = {}): Promise<void> {
   if (!SAFE_DOCUMENT.test(name)) throw new Error(`nom de document invalide: ${name}`);
+  const { company_id, interaction_id } = await resolveLink(link);
   try {
-    await sql`INSERT INTO documents (name, format, content) VALUES (${name}, ${format}, ${content})`;
+    await sql`INSERT INTO documents (name, format, content, company_id, interaction_id) VALUES (${name}, ${format}, ${content}, ${company_id}, ${interaction_id})`;
   } catch (error) {
     if (isUniqueViolation(error)) throw new Error(`Document déjà existant: ${name}`);
     throw error;
@@ -631,12 +653,13 @@ export async function readPdf(name: string): Promise<Uint8Array | null> {
   return (await readFichier(docFichier(name))) ?? (await readFichier(name));
 }
 
-export async function addPdfDocument(name: string, data: Uint8Array): Promise<void> {
+export async function addPdfDocument(name: string, data: Uint8Array, link: DocumentLink = {}): Promise<void> {
   if (!SAFE_DOCUMENT.test(name)) throw new Error(`nom de document invalide: ${name}`);
+  const { company_id, interaction_id } = await resolveLink(link);
   try {
     await sql.begin(async (tx) => {
       if ((await tx`SELECT 1 FROM fichiers WHERE name = ${name}`).length > 0) throw new Error(`Document déjà existant: ${name}`);
-      await tx`INSERT INTO documents (name, format, content) VALUES (${name}, 'pdf', '')`;
+      await tx`INSERT INTO documents (name, format, content, company_id, interaction_id) VALUES (${name}, 'pdf', '', ${company_id}, ${interaction_id})`;
       await tx`INSERT INTO fichiers (name, data) VALUES (${docFichier(name)}, ${data})`;
     });
   } catch (error) {

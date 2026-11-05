@@ -140,15 +140,22 @@ export function CalendarPage({ state, openCompany }: { state: AppState; openComp
                     ))}
                     {(events.get(iso) ?? []).length > 2 && (
                       <li>
-                        <button type="button" popovertarget={`cal-${iso}`} class="rounded px-1 py-0.5 text-xs text-muted-foreground hover:bg-muted">
+                        <button type="button" popovertarget={`cal-${iso}`} aria-label={`${(events.get(iso) ?? []).length - 2} autres événements, ${dayLabel(iso)}`} class="rounded px-1 py-0.5 text-xs text-muted-foreground hover:bg-muted">
                           +{(events.get(iso) ?? []).length - 2}
                         </button>
-                        <div id={`cal-${iso}`} popover class="m-auto grid max-w-sm gap-1.5 rounded-lg border bg-card p-3 text-card-foreground shadow-lg">
+                        <div id={`cal-${iso}`} popover aria-label={dayLabel(iso)} class="m-auto grid max-w-sm gap-1.5 rounded-lg border bg-card p-3 text-card-foreground shadow-lg">
                           <p class="text-sm font-medium capitalize">{dayLabel(iso)}</p>
                           {(events.get(iso) ?? []).map((e, k) => (
                             <div key={k} class="flex items-center gap-2 text-sm">
                               <TagBadge tag={e.tag} />
-                              <button type="button" class="min-w-0 break-words text-left hover:underline" onClick={() => openCompany(e.companyId)}>
+                              <button
+                                type="button"
+                                class="min-w-0 break-words text-left hover:underline"
+                                onClick={(ev) => {
+                                  ev.currentTarget.closest<HTMLElement>("[popover]")?.hidePopover();
+                                  openCompany(e.companyId);
+                                }}
+                              >
                                 {e.nom}
                               </button>
                             </div>

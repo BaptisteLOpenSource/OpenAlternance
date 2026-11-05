@@ -74,7 +74,7 @@ export const ECHANGE: Record<(typeof TYPES)[number], Tag> = {
 };
 export const CONTRAT_LABEL: Record<Contrat, string> = { alternance: "Alternance", stage: "Stage", cdd: "CDD", cdi: "CDI", interim: "Intérim" };
 export const CONTRAT_OPTIONS = CONTRATS.map((c) => ({ value: c, label: CONTRAT_LABEL[c] }));
-export const echangeLabel = (type: string) => ECHANGE[type as (typeof TYPES)[number]]?.label ?? type;
+export const echangeLabel = (type: string) => ECHANGE[type as (typeof TYPES)[number]]?.label ?? "Suivi";
 
 export const TagBadge = ({ tag, class: className }: { tag: Tag; class?: string }) => (
   <Badge variant={tag.variant} class={className}>

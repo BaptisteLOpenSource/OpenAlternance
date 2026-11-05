@@ -6,19 +6,19 @@ import { type Send, formFields } from "./shared";
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Label } from "./ui";
 
 // Same form in the account page and in the dashboard dialog: one place for the fields.
-export function ProfilForm({ profil, send, onDone }: { profil: Profil; send: Send; onDone?: () => void }) {
+export function ProfilForm({ profil, send }: { profil: Profil; send: Send }) {
   const [username, setUsername] = useState(profil.username);
   const [format, setFormat] = useState(profil.nom_fichier);
   const submit = async (e: SubmitEvent) => {
     e.preventDefault();
     const fields = formFields(e.currentTarget as HTMLFormElement);
-    if (await send("profil", fields)) onDone?.();
+    await send("profil", fields);
   };
   return (
     <form class="grid gap-4" onSubmit={submit}>
       <div class="grid gap-4 sm:grid-cols-2">
         <Label label="Nom d'utilisateur (obligatoire, signature et nom du PDF)">
-          <Input name="username" required defaultValue={profil.username} autofocus={!!onDone} onInput={(e) => setUsername(e.currentTarget.value)} />
+          <Input name="username" required defaultValue={profil.username} onInput={(e) => setUsername(e.currentTarget.value)} />
         </Label>
         <Label label="Email (optionnel)">
           <Input name="email" type="email" defaultValue={profil.email} />

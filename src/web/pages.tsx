@@ -508,7 +508,7 @@ export function LettresPage({ state, send, initial }: { state: AppState; send: S
         {tab === "toutes" && letters.length === 0 && <p class="text-sm text-muted-foreground">Aucune lettre.</p>}
       </div>
       {selected && (
-        <div ref={detail} tabIndex={-1} class="focus:outline-none lg:sticky lg:top-4">
+        <div ref={detail} tabIndex={-1} class="focus:outline-none lg:sticky lg:top-4 lg:max-h-[calc(100dvh-2rem)] lg:overflow-y-auto">
           <LettreView
             key={`${selected.file}-${selected.statut}-${selected.date_envoi}`}
             lettre={selected}

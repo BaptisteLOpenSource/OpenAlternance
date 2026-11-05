@@ -91,7 +91,7 @@ export const formFields = (form: HTMLFormElement) =>
 // Resolves false on failure, true on success, or the created letter's file name.
 export type Send = (action: Action, fields: Record<string, string>) => Promise<boolean | string>;
 export type DialogState = {
-  kind: "entreprise" | "personne" | "echange" | "modifier-personne" | "modifier-echange" | "lettre" | "document" | "profil" | "poste" | "modifier-poste" | "agence" | "fusion";
+  kind: "entreprise" | "personne" | "echange" | "modifier-personne" | "modifier-echange" | "lettre" | "document" | "poste" | "modifier-poste" | "agence" | "fusion";
   company?: string;
   id?: number;
   type?: InteractionType;

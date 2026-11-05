@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
-import { renderDocument, textToHtml } from "./documents";
+import { officeToHtml, renderDocument, textToHtml } from "./documents";
 import { escapeHtml } from "./logic";
+import { zip } from "./test-files";
 
 test("texte PDF : tout échappé, aucune balise ni script du fichier source", () => {
   const html = textToHtml(["<script>alert(1)</script>\n\n<img src=x onerror=alert(2)>"]);
@@ -19,4 +20,12 @@ test("txt et md rendus sans script, html brut interdit en markdown", () => {
 
 test("escapeHtml couvre les guillemets d'attribut", () => {
   expect(escapeHtml(`"'<>&`)).toBe("&quot;&#39;&lt;&gt;&amp;");
+});
+
+test("DOCX et ODT : paragraphes extraits, entités décodées puis échappées", () => {
+  const docx = officeToHtml(zip("word/document.xml", "<w:body><w:p><w:r><w:t>A &amp; B</w:t></w:r></w:p><w:p><w:r><w:t>&lt;script&gt;</w:t></w:r></w:p></w:body>"));
+  expect(docx).toBe("<section><p>A &amp; B</p><p>&lt;script&gt;</p></section>");
+  const odt = officeToHtml(zip("content.xml", '<text:h>Titre</text:h><text:p>Un<text:s/>texte</text:p>'));
+  expect(odt).toBe("<section><p>Titre</p><p>Un texte</p></section>");
+  expect(() => officeToHtml(new Uint8Array([1, 2, 3]))).toThrow(/invalide/);
 });

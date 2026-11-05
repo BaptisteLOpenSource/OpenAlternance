@@ -1,3 +1,4 @@
+import { inflateRawSync } from "node:zlib";
 import { extractText, getDocumentProxy } from "unpdf";
 import { escapeHtml, type DocFormat } from "./logic";
 
@@ -22,6 +23,50 @@ export async function pdfToHtml(data: Uint8Array): Promise<string> {
   const { text } = await extractText(pdf, { mergePages: false });
   const body = textToHtml(Array.isArray(text) ? text : [text]);
   if (!body.includes("<p>")) throw new Error("aucun texte extrait (PDF scanné ?)");
+  return body;
+}
+
+// Minimal zip reader: DOCX/ODT need one entry, no dependency for that.
+function zipEntry(zip: Buffer, wanted: string): Buffer | null {
+  const eocd = zip.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+  if (eocd < 0) return null;
+  let at = zip.readUInt32LE(eocd + 16);
+  for (let i = zip.readUInt16LE(eocd + 10); i > 0 && zip.readUInt32LE(at) === 0x02014b50; i--) {
+    const nameLen = zip.readUInt16LE(at + 28);
+    const name = zip.toString("utf8", at + 46, at + 46 + nameLen);
+    if (name === wanted) {
+      const local = zip.readUInt32LE(at + 42);
+      const start = local + 30 + zip.readUInt16LE(local + 26) + zip.readUInt16LE(local + 28);
+      const data = zip.subarray(start, start + zip.readUInt32LE(at + 20));
+      const method = zip.readUInt16LE(at + 10);
+      if (method === 0) return data;
+      return method === 8 ? inflateRawSync(data, { maxOutputLength: 50_000_000 }) : null;
+    }
+    at += 46 + nameLen + zip.readUInt16LE(at + 30) + zip.readUInt16LE(at + 32);
+  }
+  return null;
+}
+
+const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
+const decodeXml = (s: string) =>
+  s.replace(/&(#x[\da-f]+|#\d+|\w+);/gi, (m, e: string) =>
+    e[0] === "#" ? String.fromCodePoint(Number(e[1].toLowerCase() === "x" ? `0${e.slice(1)}` : e.slice(1))) : (ENTITIES[e] ?? m),
+  );
+
+// DOCX (word/document.xml) or ODT (content.xml): paragraphs as plain text.
+export function officeToHtml(data: Uint8Array): string {
+  const zip = Buffer.from(data);
+  const xml = (zipEntry(zip, "word/document.xml") ?? zipEntry(zip, "content.xml"))?.toString("utf8");
+  if (!xml) throw new Error("fichier Word/ODT invalide (DOCX ou ODT attendu)");
+  const text = xml
+    .replace(/<w:delText[^>]*>[^<]*<\/w:delText>/g, "")
+    .replace(/<(w:tab|text:tab)\b[^>]*\/>/g, "\t")
+    .replace(/<(w:br|w:cr|text:line-break)\b[^>]*\/>/g, "\n")
+    .replace(/<text:s\b[^>]*\/>/g, " ")
+    .replace(/<\/(w:p|text:p|text:h)>/g, "\n\n")
+    .replace(/<[^>]+>/g, "");
+  const body = textToHtml([decodeXml(text)]);
+  if (!body.includes("<p>")) throw new Error("aucun texte extrait du document");
   return body;
 }
 

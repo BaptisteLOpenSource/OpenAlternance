@@ -1,7 +1,9 @@
+import { Info } from "lucide-preact";
 import { useEffect, useState } from "preact/hooks";
 import { CLOSING_STATUTS, TYPES } from "../logic";
 import type { Agence } from "../repo";
 import { createLettre, lettreOf } from "./commands";
+import { DocumentLinkFields } from "./documents";
 import { ProfilForm } from "./profil";
 import { CONTRAT_OPTIONS, type DialogState, ECHANGE, EchangeBadge, type Send, formFields } from "./shared";
 import type { Action, AppState, PosteEtat } from "./store";
@@ -77,55 +79,56 @@ function LettreForm({ state, send, company, onClose }: { state: AppState; send: 
   );
 }
 
-// Markdown or text typed here; PDF stored as is.
-function DocumentForm({ send, onClose }: { send: Send; onClose: () => void }) {
-  const [format, setFormat] = useState<"pdf" | "md" | "txt">("pdf");
+const FORMATS = "PDF (affiché tel quel), Word DOCX et LibreOffice ODT (texte extrait), Markdown (.md), texte (.txt). Ancien .doc : réenregistrez-le en .docx.";
+
+// Format read from the file extension; no file = typed Markdown.
+function DocumentForm({ state, send, company: initial, onClose }: { state: AppState; send: Send; company?: string; onClose: () => void }) {
   const [error, setError] = useState<string | null>(null);
+  const [link, setLink] = useState({ company: String(state.companies.find((c) => c.nom === initial)?.id ?? ""), echange: "" });
   const submit = async (e: SubmitEvent) => {
     e.preventDefault();
     const form = new FormData(e.currentTarget as HTMLFormElement);
-    const titre = String(form.get("titre") ?? "").trim();
-    let ok: boolean | string;
-    if (format === "pdf") {
-      const file = form.get("pdf");
-      if (!(file instanceof File) || file.size === 0) return setError("Choisissez un fichier PDF");
-      if (file.size > MAX_PDF_BYTES) return setError("PDF trop lourd (3 Mo max)");
-      ok = await send("document-pdf", { titre, data: await readBase64(file) });
-    } else {
-      ok = await send("document", { titre, format, content: String(form.get("content") ?? "") });
+    const file = form.get("fichier");
+    const typed = String(form.get("titre") ?? "").trim();
+    if (!(file instanceof File) || file.size === 0) {
+      if (!typed) return setError("Choisissez un fichier ou donnez un titre");
+      if (await send("document", { titre: typed, format: "md", content: String(form.get("content") ?? ""), ...link })) onClose();
+      return;
     }
+    const dot = file.name.lastIndexOf(".");
+    const ext = dot > 0 ? file.name.slice(dot + 1).toLowerCase() : "";
+    const titre = typed || (dot > 0 ? file.name.slice(0, dot) : file.name);
+    if (file.size > MAX_PDF_BYTES) return setError("Fichier trop lourd (3 Mo max)");
+    let ok: boolean | string;
+    if (ext === "pdf") ok = await send("document-pdf", { titre, data: await readBase64(file), ...link });
+    else if (ext === "docx" || ext === "odt") ok = await send("document-office", { titre, data: await readBase64(file), ...link });
+    else if (ext === "md" || ext === "txt") ok = await send("document", { titre, format: ext, content: await file.text(), ...link });
+    else return setError(`Format .${ext || "?"} non pris en charge. ${FORMATS}`);
     if (ok) onClose();
   };
   return (
     <form class="grid gap-4" onSubmit={submit}>
-      <Label label="Type">
-        <Select
-          value={format}
-          onChange={(v) => {
-            setFormat(v as typeof format);
-            setError(null);
-          }}
-          options={[
-            { value: "pdf", label: "PDF" },
-            { value: "md", label: "Markdown" },
-            { value: "txt", label: "Texte (TXT)" },
-          ]}
-        />
+      <div class="grid gap-2">
+        <div class="flex items-center gap-1.5 text-sm font-medium">
+          Fichier
+          <details class="relative">
+            <summary class="flex cursor-pointer list-none text-muted-foreground hover:text-foreground" title={FORMATS} aria-label="Formats pris en charge">
+              <Info class="size-4" />
+            </summary>
+            <p class="absolute left-0 z-10 mt-1 w-64 rounded-md border bg-card p-2 text-xs font-normal text-card-foreground shadow-md">{FORMATS}</p>
+          </details>
+        </div>
+        <Input name="fichier" type="file" accept=".pdf,.docx,.odt,.md,.txt" aria-label="Fichier" onChange={() => setError(null)} />
+      </div>
+      <Label label="Titre (nom du fichier par défaut)">
+        <Input name="titre" autofocus />
       </Label>
-      <Label label="Titre">
-        <Input name="titre" required autofocus />
+      <DocumentLinkFields state={state} company={link.company} echange={link.echange} onChange={(company, echange) => setLink({ company, echange })} />
+      <Label label="Ou écrire directement (Markdown)">
+        <Textarea name="content" class="min-h-32 font-mono text-sm" />
       </Label>
-      {format === "pdf" ? (
-        <Label label="Fichier PDF">
-          <Input name="pdf" type="file" accept="application/pdf" required />
-        </Label>
-      ) : (
-        <Label label="Contenu">
-          <Textarea name="content" class="min-h-48 font-mono text-sm" />
-        </Label>
-      )}
       {error && <p role="alert" class="text-sm text-destructive">{error}</p>}
-      <p class="text-sm text-muted-foreground">Le texte est enregistré tel quel, sans balises ni scripts.</p>
+      <p class="text-sm text-muted-foreground">Le texte est enregistré sans balises ni scripts.</p>
       <div class="flex justify-end gap-2">
         <Button variant="outline" onClick={onClose}>Annuler</Button>
         <Button type="submit">Créer</Button>
@@ -162,7 +165,7 @@ export function ActionDialog({ dialog, state, send, onClose }: { dialog: DialogS
   );
   const ownForm = () => {
     if (kind === "lettre") return <LettreForm state={state} send={send} company={dialog?.company} onClose={onClose} />;
-    if (kind === "document") return <DocumentForm send={send} onClose={onClose} />;
+    if (kind === "document") return <DocumentForm state={state} send={send} company={dialog?.company} onClose={onClose} />;
     if (kind === "profil") return <ProfilForm profil={state.profil} send={send} onDone={onClose} />;
   };
   return (

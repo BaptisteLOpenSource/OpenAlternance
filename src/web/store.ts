@@ -48,6 +48,8 @@ export type Action =
   | "lettre-supprimer"
   | "document"
   | "document-pdf"
+  | "document-office"
+  | "document-lier"
   | "document-texte"
   | "cv"
   | "document-modifier"
